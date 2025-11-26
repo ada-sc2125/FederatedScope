@@ -110,9 +110,16 @@ def zo_forward(ctx):
 
 
 class MeZOAdamTrainer(LLMTrainer):
-    def _hook_on_routine_start_init(self, ctx):
-        ctx.num_samples = 0
-        super()._hook_on_routine_start_init(ctx)
+    def train(self,
+              target_data_split_name=None,
+              hooks_set=None,
+              **kwargs):
+        # Force-initialize num_samples at the entry point of training
+        # to fix the AttributeError.
+        self.ctx.num_samples = 0
+        return super().train(target_data_split_name=target_data_split_name,
+                               hooks_set=hooks_set,
+                               **kwargs)
 
     def _hook_on_fit_start_init(self, ctx):
         """
