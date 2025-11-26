@@ -63,13 +63,20 @@ def dirichlet_distribution_noniid_slice(label,
     assert num > client_num * min_size, f'The number of sample should be ' \
                                         f'greater than' \
                                         f' {client_num * min_size}.'
+
+    # Pre-group indices by class to avoid repeated np.where calls
+    indices_by_class = [np.where(label == k)[0] for k in range(classes)]
+    
     size = 0
     while size < min_size:
         idx_slice = [[] for _ in range(client_num)]
         for k in range(classes):
             # for label k
-            idx_k = np.where(label == k)[0]
+            # Original line: idx_k = np.where(label == k)[0]
+            # Optimized: get pre-grouped indices
+            idx_k = indices_by_class[k]
             np.random.shuffle(idx_k)
+            
             prop = np.random.dirichlet(np.repeat(alpha, client_num))
             # prop = np.array([
             #    p * (len(idx_j) < num / client_num)
@@ -84,6 +91,7 @@ def dirichlet_distribution_noniid_slice(label,
                 idx_slice[i].extend(splits[i].tolist())
             
             size = min([len(idx_j) for idx_j in idx_slice])
+            
     for i in range(client_num):
         np.random.shuffle(idx_slice[i])
     return idx_slice
