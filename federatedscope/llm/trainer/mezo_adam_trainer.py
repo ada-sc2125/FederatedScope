@@ -111,9 +111,15 @@ def zo_forward(ctx):
 
 class MeZOAdamTrainer(LLMTrainer):
     def train(self, *args, **kwargs):
-        # Force-initialize num_samples at the entry point of training
-        # to fix the AttributeError.
+        # Force-initialize counters at the entry point of training
+        # to fix the AttributeError, as the default routine init hook
+        # is not being called for some reason.
         self.ctx.num_samples = 0
+        self.ctx.loss_batch_total = 0
+        self.ctx.loss_regular_total = 0
+        if self.ctx.cfg.grad.grad_accum_count > 1:
+            self.ctx.loss_task_total = 0
+
         return super().train(*args, **kwargs)
 
     def _hook_on_fit_start_init(self, ctx):
