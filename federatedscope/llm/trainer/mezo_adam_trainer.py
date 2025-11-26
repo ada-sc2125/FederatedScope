@@ -29,6 +29,7 @@ import torch
 import logging
 from federatedscope.register import register_trainer
 from federatedscope.llm.trainer.trainer import LLMTrainer
+from federatedscope.core.auxiliaries.scheduler_builder import get_scheduler
 from federatedscope.core.trainers.context import CtxVar
 from federatedscope.core.trainers.enums import LIFECYCLE, MODE
 
@@ -109,13 +110,27 @@ def zo_forward(ctx):
 
 
 class MeZOAdamTrainer(LLMTrainer):
-    def _hook_on_fit_start(self, ctx):
-        # Initialize Adam states
+    def _hook_on_fit_start_init(self, ctx):
+        """
+        Custom initialization for MeZO-Adam.
+        This method overrides the default optimizer setup.
+        """
+        ctx.model.to(ctx.device)
+
+        # MeZO-Adam is its own optimizer. However, the FS scheduler system
+        # requires a torch.optim.Optimizer instance.
+        # We create a dummy optimizer here just for the scheduler to wrap.
+        # The learning rate will be retrieved from the scheduler at each step.
+        dummy_optimizer = torch.optim.SGD(ctx.model.parameters(), lr=0.0)
+        ctx.scheduler = get_scheduler(dummy_optimizer,
+                                      **ctx.cfg.train.scheduler)
+        ctx.optimizer = None  # Explicitly set to None
+
+        # Initialize states for MeZO-Adam
         ctx.step = 0
         ctx.exp_avg = {}
         ctx.exp_avg_sq = {}
 
-        # Get params to optimize
         named_parameters_to_optim = []
         for name, param in ctx.model.named_parameters():
             if param.requires_grad:
@@ -126,9 +141,6 @@ class MeZOAdamTrainer(LLMTrainer):
                 param, memory_format=torch.preserve_format)
             ctx.exp_avg_sq[name] = torch.zeros_like(
                 param, memory_format=torch.preserve_format)
-
-        # Call super to ensure other initializations are done
-        super()._hook_on_fit_start(ctx)
 
     def _hook_on_batch_forward(self, ctx):
         if ctx.cur_mode in [MODE.TRAIN, MODE.FINETUNE]:
