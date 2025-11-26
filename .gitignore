@@ -1,6 +1,7 @@
-# data and model
+# data, model, plots
 data/
 exp/
+plots/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
