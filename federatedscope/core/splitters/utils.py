@@ -77,10 +77,12 @@ def dirichlet_distribution_noniid_slice(label,
             # ])
             # prop = prop / sum(prop)
             prop = (np.cumsum(prop) * len(idx_k)).astype(int)[:-1]
-            idx_slice = [
-                idx_j + idx.tolist()
-                for idx_j, idx in zip(idx_slice, np.split(idx_k, prop))
-            ]
+            
+            # New, efficient list extension
+            splits = np.split(idx_k, prop)
+            for i in range(client_num):
+                idx_slice[i].extend(splits[i].tolist())
+            
             size = min([len(idx_j) for idx_j in idx_slice])
     for i in range(client_num):
         np.random.shuffle(idx_slice[i])
