@@ -33,7 +33,7 @@ train:
   optimizer:
     lr: 0.00001
     weight_decay: 0.0
-  is_enable_half: True
+  is_enable_half: False
 criterion:
   type: CrossEntropyLoss
 trainer:
