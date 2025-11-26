@@ -131,7 +131,7 @@ def zo_forward(ctx):
                             attention_mask=attention_mask)
         logits = outputs.logits
         loss = outputs.loss
-    return logits.detach(), loss.detach()
+    return logits.detach(), loss.detach().float()
 
 
 class MeZOMuonTrainer(LLMTrainer):

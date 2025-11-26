@@ -106,7 +106,8 @@ def zo_forward(ctx):
                             attention_mask=attention_mask)
         logits = outputs.logits
         loss = outputs.loss
-    return logits.detach(), loss.detach()
+    # Cast loss to float32 to prevent NaN from inf-inf during grad estimation
+    return logits.detach(), loss.detach().float()
 
 
 class MeZOAdamTrainer(LLMTrainer):
