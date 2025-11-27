@@ -29,7 +29,7 @@ model:
   type: 'openlm-research/open_llama_3b_v2@huggingface_llm'
 train:
   # Change strategy from 'frozen' to 'finetune'
-  train_strategy: 'finetune'
+  train_strategy: 'frozen'
   local_update_steps: 5
   batch_or_epoch: batch
   optimizer:
