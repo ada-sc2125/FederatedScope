@@ -84,8 +84,7 @@ def get_llm(config):
         input_embeddings[-num_new_tokens:] = input_embeddings_avg
         output_embeddings[-num_new_tokens:] = output_embeddings_avg
 
-    args = config.llm.adapter.args[0] if len(
-        config.llm.adapter.args[0]) > 0 else {}
+    args = config.llm.adapter.args[0] if config.llm.adapter.args else {}
     model = AdapterModel(model, use_adapter=config.llm.adapter.use, **args)
 
     return model
