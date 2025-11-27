@@ -31,11 +31,12 @@ train:
   local_update_steps: 5
   batch_or_epoch: batch
   optimizer:
-    lr: 0.000001
+    lr: 0.0000001
     weight_decay: 0.0
     betas: [0.9, 0.999]
     eps: 1e-8
     grad_clip_value: 1.0
+    zo_eps: 0.01
   is_enable_half: False
 criterion:
   type: CrossEntropyLoss

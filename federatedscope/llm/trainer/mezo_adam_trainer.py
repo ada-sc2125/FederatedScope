@@ -36,10 +36,11 @@ from federatedscope.core.trainers.enums import LIFECYCLE, MODE
 logger = logging.getLogger(__name__)
 
 
-def zo_step(ctx, zo_eps=1e-3):
+def zo_step(ctx):
     """
     Estimate gradient by MeZO. Return the loss from f(theta + z)
     """
+    zo_eps = ctx.cfg.train.optimizer.get('zo_eps', 1e-3)
     # determine which parameters to optimize
     ctx.named_parameters_to_optim = []
     for name, param in ctx.model.named_parameters():
