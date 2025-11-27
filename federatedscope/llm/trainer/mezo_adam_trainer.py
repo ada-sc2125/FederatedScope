@@ -59,6 +59,11 @@ def zo_step(ctx, zo_eps=1e-3):
 
     ctx.projected_grad = ((loss1 - loss2) / (2 * zo_eps)).item()
 
+    grad_clip_value = ctx.cfg.train.optimizer.get('grad_clip_value', 0.0)
+    if grad_clip_value > 0:
+        ctx.projected_grad = np.clip(ctx.projected_grad, -grad_clip_value,
+                                     grad_clip_value)
+
     # TODO double check here to confirm the implementation of
     # gradient accumulation in FS and MeZO
 
