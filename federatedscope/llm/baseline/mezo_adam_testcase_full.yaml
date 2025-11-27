@@ -1,0 +1,48 @@
+use_gpu: True
+device: 0
+early_stop:
+  patience: 0
+federate:
+  mode: standalone
+  client_num: 4
+  total_round_num: 100
+  save_to: "mezo_adam_testcase_full.ckpt"
+  save_freq: 50
+  share_local_model: True
+  online_aggr: False
+data:
+  root: data/
+  type: 'alpaca@llm'
+  splits: [0.98,0.01,0.01]
+  splitter: 'iid'
+llm:
+  tok_len: 1000
+  chat:
+    max_len: 2000
+  adapter:
+    use: False
+    args: []
+dataloader:
+  batch_size: 1
+model:
+  type: 'openlm-research/open_llama_3b_v2@huggingface_llm'
+train:
+  train_strategy: 'frozen'
+  local_update_steps: 5
+  batch_or_epoch: batch
+  optimizer:
+    lr: 0.000001
+    weight_decay: 0.0
+    betas: [0.9, 0.999]
+    eps: 1e-8
+    grad_clip_value: 1.0
+    zo_eps: 0.01
+  is_enable_half: True
+criterion:
+  type: CrossEntropyLoss
+trainer:
+  type: mezo_adam_trainer
+eval:
+  freq: 10
+  metrics: ['loss']
+  count_flops: False
