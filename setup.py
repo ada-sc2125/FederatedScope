@@ -42,7 +42,7 @@ app_requires = [
     'torch-geometric==2.4.0',
     'nltk',
     'transformers==4.40.0',
-    'tokenizers==0.15.2',
+    'tokenizers==0.19.1',
     'datasets',
     'sentencepiece',
     'textgrid',
@@ -51,7 +51,7 @@ app_requires = [
 ]
 
 llm_requires = [
-    'tokenizers==0.15.2',
+    'tokenizers==0.19.1',
     'transformers==4.40.0',
     'accelerate==0.29.3',
     'peft==0.10.0',
