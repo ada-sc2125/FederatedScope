@@ -7,7 +7,7 @@ __version__ = '0.3.0'
 URL = 'https://github.com/alibaba/FederatedScope'
 
 minimal_requires = [
-    'numpy<1.23.0',
+    'numpy<1.27,>=1.22',
     'scikit-learn==1.0.2',
     'scipy==1.7.3',
     'pandas',
@@ -39,10 +39,10 @@ org_requires = [
 ]
 
 app_requires = [
-    'torch-geometric==2.0.4',
+    'torch-geometric==2.4.0',
     'nltk',
-    'transformers==4.16.2',
-    'tokenizers==0.10.3',
+    'transformers==4.40.0',
+    'tokenizers==0.15.2',
     'datasets',
     'sentencepiece',
     'textgrid',
@@ -51,11 +51,11 @@ app_requires = [
 ]
 
 llm_requires = [
-    'tokenizers==0.13.3',
-    'transformers==4.29.2',
-    'accelerate==0.23.0',
-    'peft==0.3.0',
-    'sentencepiece==0.1.97',
+    'tokenizers==0.15.2',
+    'transformers==4.40.0',
+    'accelerate==0.29.3',
+    'peft==0.10.0',
+    'sentencepiece',
 ]
 
 benchmark_hpo_requires = [
