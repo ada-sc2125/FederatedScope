@@ -1,4 +1,5 @@
-from optimizers.mezo_optimizer import *
+from optimizers.mezo_optimizer import MeZOFramework
+from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_bias_optimizer import *
 from tqdm import tqdm
 
@@ -35,7 +36,10 @@ class Client(object):
             assert probabilities is not None
             framework = MeZOBiasOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds, probabilities=probabilities, gradient_history=gradient_history)
         else:
-            framework = MeZOFramework(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
+            if self.args.mezo_optimizer == 'adam':
+                framework = MeZOAdamOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
+            else: # 'sgd'
+                framework = MeZOFramework(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
         self.model.eval()
         with torch.inference_mode():
             if self.args.batch_or_epoch == 'batch':

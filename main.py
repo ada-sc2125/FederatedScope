@@ -57,6 +57,12 @@ if __name__ == '__main__':
     parser.add_argument('-K', type=int, default=4096, help='ratio of active clients in each round')
     parser.add_argument('--zo_eps', type=float, default=0.0005, help=r'\eps in MeZO')
 
+    # MeZO Optimizer Arguments
+    parser.add_argument('--mezo_optimizer', type=str, default='sgd', choices=['sgd', 'adam'], help='Which MeZO optimizer to use. `sgd` is the default MeZOFramework.')
+    parser.add_argument('--adam_beta1', type=float, default=0.9, help='beta1 for MeZO-Adam')
+    parser.add_argument('--adam_beta2', type=float, default=0.999, help='beta2 for MeZO-Adam')
+    parser.add_argument('--adam_eps', type=float, default=1e-8, help='epsilon for MeZO-Adam')
+
     # Training args only for `FedKSeed-Pro`
     parser.add_argument('--bias_sampling', default=False, action='store_true', help='if `true`, the probabilities of candidate seeds to be sampled are not identical, i.e., FedKSeed-Pro')
     parser.add_argument('--bias_loss_clip', default=1000.0, type=float, help='scalar gradient whose abstract values exceeds this value will be cliped')
