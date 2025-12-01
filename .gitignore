@@ -17,7 +17,7 @@ batch_*.py
 
 exp/
 logs/
-
+data/
 plots/
 muon.py
 data/
