@@ -1,5 +1,6 @@
 from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
+from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
 from optimizers.mezo_bias_optimizer import *
 from tqdm import tqdm
 
@@ -38,6 +39,8 @@ class Client(object):
         else:
             if self.args.mezo_optimizer == 'adam':
                 framework = MeZOAdamOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
+            elif self.args.mezo_optimizer == 'muon':
+                framework = MeZOMuonOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
             else: # 'sgd'
                 framework = MeZOFramework(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
         self.model.eval()
