@@ -26,8 +26,15 @@ In the future, we will merge this branch into the [llm](https://github.com/aliba
 └── server.py
 ```
 
-## Requirements
-Please see `requirements.txt`.
+## Install
+1. `conda create --name fedkseed python=3.9 -y`
+
+2. `conda activate fedkseed`
+
+3. `conda install pytorch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 pytorch-cuda=11.8 -c pytorch -c nvidia`
+
+4. `pip install -r requirements.txt`
+
 
 ## Data Preparation
 1. Natural Instructions
