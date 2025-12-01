@@ -20,3 +20,5 @@ logs/
 
 plots/
 muon.py
+data/
+federatedscope*
