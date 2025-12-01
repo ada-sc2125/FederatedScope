@@ -17,6 +17,3 @@ batch_*.py
 
 exp/
 logs/
-
-plots/
-muon.py
