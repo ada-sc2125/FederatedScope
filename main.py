@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip', type=float, default=-100.0, help='clip the over large loss value, if < 0, disable this feature')
 
     # Training args only for `FedKSeed`
-    parser.add_argument('-K', type=int, default=4096, help='ratio of active clients in each round')
+    parser.add_argument('-K', type=int, default=4096, help='Number of candidate seeds for MeZO')
     parser.add_argument('--zo_eps', type=float, default=0.0005, help=r'\eps in MeZO')
 
     # MeZO Optimizer Arguments
