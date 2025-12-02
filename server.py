@@ -5,7 +5,9 @@ from utils_data.default_tokens import DefaultToken
 from copy import deepcopy
 import os
 import math
-from optimizers.mezo_optimizer import *
+from optimizers.mezo_optimizer import MeZOFramework
+from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
+from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
 
 
 def softmax(vec):
@@ -92,7 +94,14 @@ class Server(object):
         self.model = deepcopy(self.model_w0)
         self.model.to(self.device)
         
-        framework = MeZOFramework(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+        # Choose the same optimizer as the clients
+        if self.args.mezo_optimizer == 'adam':
+            framework = MeZOAdamOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+        elif self.args.mezo_optimizer == 'muon':
+            framework = MeZOMuonOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+        else: # 'sgd'
+            framework = MeZOFramework(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+
         progress_bar = tqdm(range(len(self.seed_pool))) 
 
         # pull the latest model via accumulated {seed, grad} pairs on the server
