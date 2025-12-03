@@ -1,3 +1,5 @@
+import torch
+import numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 from evaluations import *
