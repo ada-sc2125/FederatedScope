@@ -43,7 +43,7 @@ class MeZOAdamOptimizer(object):
 
         # Adam-specific states
         self.betas = (args.adam_beta1, args.adam_beta2) if hasattr(args, 'adam_beta1') and hasattr(args, 'adam_beta2') else (0.9, 0.999)
-        self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-8
+        self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-6
         self.state = {}
         for name, param in self.named_parameters_to_optim:
             self.state[name] = {
