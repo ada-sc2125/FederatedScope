@@ -3,7 +3,8 @@ from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
 from optimizers.mezo_bias_optimizer import *
 from tqdm import tqdm
-
+import torch
+from aggregator import FedAvgAggregator
 
 class Client(object):
     def __init__(self, idx, args, candidate_seeds, train_loader):
@@ -12,11 +13,12 @@ class Client(object):
         self.train_loader = train_loader
         self.train_iterator = iter(self.train_loader)
         self.model = None
+        self.aggregator = None
 
         self.device = torch.device(f'cuda:{args.device}')
         self.candidate_seeds = candidate_seeds
 
-    def local_train_with_seed_pool(self, pulled_model, cur_round, memory_record_dic=None, probabilities=None, gradient_history=None):
+    def local_train(self, pulled_model, cur_round, memory_record_dic=None, probabilities=None, gradient_history=None):
         self.model = pulled_model
         self.model.to(self.device)
         
@@ -76,14 +78,30 @@ class Client(object):
                     progress_bar.set_description(f'client {self.idx} train at epoch {int(cur_step / len(self.train_loader)) + 1}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}')
                 else:
                     progress_bar.set_description(f'client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}')
-        # save both CPU and GPU memory
-        del framework
-        self.model = None
+        
+        # In the gossip protocol, we need to keep the model for aggregation.
+        # We don't clear the model here.
         
         if memory_record_dic is not None:
             memory_record_dic[self.device.index] = {}
             memory_record_dic[self.device.index]['max_memory_allocated'] = torch.cuda.max_memory_allocated(self.device)
             memory_record_dic[self.device.index]['max_memory_reserved'] = torch.cuda.max_memory_reserved(self.device)
+
+    def local_gossip_aggregate(self, neighbor_state_dicts):
+        """
+        Performs gossip-based aggregation with neighbor models' state_dicts.
+        
+        Args:
+            neighbor_state_dicts (list): A list of state_dicts from neighbor clients.
+        """
+        # Initialize aggregator with the current local model
+        self.aggregator = FedAvgAggregator(self.model)
+
+        # Aggregate models from neighbors
+        aggregated_state_dict = self.aggregator.aggregate(neighbor_state_dicts)
+        self.model.load_state_dict(aggregated_state_dict)
+        print(f"Client {self.idx}: Aggregated model with {len(neighbor_state_dicts)} neighbors.")
+
 
     def clear_model(self):
         # clear model to same memory

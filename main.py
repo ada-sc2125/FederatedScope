@@ -7,6 +7,7 @@ import torch
 from server import Server
 from client import Client
 from utils_data.load_data import get_loaders
+from topologies import create_ring_topology, create_full_topology, create_star_topology, create_grid_topology
 
 import yaml
 from copy import deepcopy
@@ -27,11 +28,16 @@ if __name__ == '__main__':
     
     # Federation
     parser.add_argument('--num_clients', type=int, default=200, help='N in our paper')
-    parser.add_argument('-m', type=float, default=0.05, help='ratio of activate clients in each round')
+    parser.add_argument('-m', type=float, default=0.05, help='ratio of activate clients in each round (only for centralized FL)')
     parser.add_argument('--rounds', type=int, default=40, help='the total number of rounds')
-    parser.add_argument('--local_step', type=int, default=200, help=r'$\tau in our paper')
+    parser.add_argument('--local_step', type=int, default=200, help=r'$ tau in our paper')
     parser.add_argument('--batch_or_epoch', type=str, default='batch', choices=['epoch', 'batch'])
     parser.add_argument('--equal_weight', default=False, action='store_true', help='if `true`, the weights among clients for aggregation are the same')
+    
+    # Gossip-related arguments
+    parser.add_argument('--topology', type=str, default='random', choices=['ring', 'full', 'star', 'grid', 'random'], help='Network topology for gossip communication')
+    parser.add_argument('--num_neighbors', type=int, default=2, help='Number of neighbors for random gossip aggregation')
+
 
     # Data
     ## Arguments related to data on both datasets
@@ -55,7 +61,7 @@ if __name__ == '__main__':
 
     # Training args only for `FedKSeed`
     parser.add_argument('-K', type=int, default=4096, help='Number of candidate seeds for MeZO')
-    parser.add_argument('--zo_eps', type=float, default=0.0005, help=r'\eps in MeZO')
+    parser.add_argument('--zo_eps', type=float, default=0.0005, help=r'eps in MeZO')
 
     # MeZO Optimizer Arguments
     parser.add_argument('--mezo_optimizer', type=str, default='sgd', choices=['sgd', 'adam', 'muon'], help='Which MeZO optimizer to use.')
@@ -115,21 +121,42 @@ if __name__ == '__main__':
 
     # since only CUDA device is available, load all models on device 0
     args.device = 0
-    client_indices_rounds = []
-    for _ in range(args.rounds):
-        client_indices_rounds.append(np.random.choice(np.arange(args.num_clients), size=int(args.num_clients * args.m), replace=False))
+    device = torch.device(f'cuda:{args.device}')
 
     client_list = []
     
     # sample `K` candidate seeds
     candidate_seeds = np.random.randint(1, 100000000000, args.K)
 
+    # Server is now mainly for evaluation
     server = Server(args, eval_loader=eval_loader, candidate_seeds=candidate_seeds, log_dir=log_dir)
     for idx in range(args.num_clients):
         client_list.append(Client(idx, args, candidate_seeds, list_train_loader[idx]))
     
+    # --- Create network topology ---
+    print(f"Creating '{args.topology}' topology...")
+    if args.topology == 'ring':
+        neighborhoods = create_ring_topology(client_list)
+    elif args.topology == 'full':
+        neighborhoods = create_full_topology(client_list)
+    elif args.topology == 'star':
+        neighborhoods = create_star_topology(client_list)
+    elif args.topology == 'grid':
+        neighborhoods = create_grid_topology(client_list)
+    else: # 'random'
+        neighborhoods = None # Will be determined dynamically in each round
+    print("Topology created.")
+
+    # Initialize all client models with the server's initial model (on CPU)
+    for client in client_list:
+        client.model = deepcopy(server.model)
+
+    # Initial evaluation
+    server.model.to(device)
     eval_result = server.eval(cur_round=0, eval_avg_acc=eval_avg_acc)
+    server.model.to('cpu')
     eval_avg_acc.append(eval_result)
+
     if args.log:
         with open(os.path.join(log_dir, 'memory.json'), 'w') as writer:
             json.dump(memory_record_dic, writer)
@@ -137,22 +164,66 @@ if __name__ == '__main__':
             json.dump({
                 'eval_avg_acc': eval_avg_acc
             }, writer)
-    for r in range(1, args.rounds + 1):
-        selected_client = [client_list[i] for i in client_indices_rounds[r-1]]
-        if args.bias_sampling:
-            probabilities = server.calculate_probabilities()
-        else:
-            probabilities = None
-        for client in selected_client:
-            # server.model is pulled after aggregation of the previous round from the server perspective
-            # use a global pulling operation to deduplicate the pulling of all clients
-            client.local_train_with_seed_pool(deepcopy(server.model), cur_round=r, memory_record_dic=memory_record_dic, probabilities=probabilities, gradient_history=server.gradient_history)
-        server.aggregate_seed_pool(selected_client)
 
-        # server gets the latest global model from the accumulated scalar gradients
-        server.update_global_model_by_seed_pool()
+    # --- Gossip Training Loop ---
+    for r in range(1, args.rounds + 1):
+        print(f"--- Round {r}/{args.rounds} ---")
+
+        # --- Local Training Phase ---
+        # In this phase, each client's model is moved to the GPU for training and then left there.
+        print("--- Kicking off local training for all clients ---")
+        for client in client_list:
+            client.local_train(
+                pulled_model=client.model, # Starts on CPU, moved to GPU inside local_train
+                cur_round=r
+            )
+        print("--- Local training finished for all clients ---")
+        
+        # --- Prepare for Aggregation: Move model parameters from GPU to CPU ---
+        models_state_dicts_cpu = {
+            client.idx: {key: value.cpu() for key, value in client.model.state_dict().items()}
+            for client in client_list
+        }
+
+        # --- Offload all models from GPU to free up memory ---
+        print("--- Offloading all models from GPU to CPU ---")
+        for client in client_list:
+            client.model.to('cpu')
+        torch.cuda.empty_cache()
+
+        # --- Aggregation Phase (Optimized) ---
+        print("--- Kicking off aggregation for all clients (Optimized) ---")
+        for client in client_list:
+            # a. Move the current client's model to GPU for aggregation
+            client.model.to(device)
+
+            if neighborhoods: # Static topology
+                neighbors = neighborhoods[client.idx]
+            else: # Dynamic random topology
+                other_clients = [c for c in client_list if c.idx != client.idx]
+                num_neighbors = min(args.num_neighbors, len(other_clients))
+                neighbors = random.sample(other_clients, num_neighbors)
+            
+            neighbor_state_dicts = [models_state_dicts_cpu[n.idx] for n in neighbors]
+
+            # b. Perform aggregation (only this client's model is on GPU)
+            client.local_gossip_aggregate(
+                neighbor_state_dicts=neighbor_state_dicts
+            )
+
+            # c. Immediately move the updated model back to CPU
+            client.model.to('cpu')
+        print("--- Aggregation finished for all clients ---")
+
+        # --- Round Evaluation ---
+        # For evaluation, we pick a client's model, move it to the GPU, evaluate, then move it back.
+        eval_model = client_list[0].model
+        eval_model.to(device)
+        server.model = eval_model
         eval_result = server.eval(cur_round=r, eval_avg_acc=eval_avg_acc)
+        eval_model.to('cpu')
         eval_avg_acc.append(eval_result)
+        
         if args.log:
             with open(os.path.join(log_dir, 'memory.json'), 'w') as writer:
                 json.dump(memory_record_dic, writer)
@@ -161,15 +232,30 @@ if __name__ == '__main__':
                     'eval_avg_acc': eval_avg_acc
                 }, writer)
 
-    # reset seed to have an eval_loader with the same data samples
+
+    # --- Final Evaluation for Each Client ---
+    print("\n--- Final Evaluation on Each Client's Model ---")
     args.eval_metric = previous_metric
     setup_seed(args.seed)
     _, eval_loader_final, _ = get_loaders(args, only_eval=True)
     server.eval_loader = eval_loader_final
-    eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
+    
+    final_eval_results = {}
+    for client in client_list:
+        print(f"\nEvaluating Client {client.idx}...")
+        # Move the client's final model to GPU for evaluation
+        client.model.to(device)
+        server.model = client.model
+        eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
+        # Move it back to CPU after evaluation
+        client.model.to('cpu')
+        
+        final_eval_results[f'client_{client.idx}'] = eval_result
+        print(f'Client {client.idx} final {args.eval_metric}: {eval_result}')
+
     if args.log:
-        with open(os.path.join(log_dir, 'final_eval.json'), 'w') as writer:
-            json.dump({
-                f'final_eval_{args.eval_metric}': eval_result
-            }, writer)
-    print(f'final round {args.eval_metric}: {eval_result}')
+        with open(os.path.join(log_dir, 'final_eval_all_clients.json'), 'w') as writer:
+            json.dump(final_eval_results, writer)
+    
+    avg_final_eval = np.mean(list(final_eval_results.values()))
+    print(f'\nAverage final {args.eval_metric} across all clients: {avg_final_eval}')
