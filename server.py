@@ -181,7 +181,7 @@ class Server(object):
         num_eval = 0
         
         with torch.inference_mode():
-            for batch in self.eval_loader:
+            for batch in iter(self.eval_loader):
                 batch = {
                     'input_ids': batch['input_ids'].to(self.device),
                     'labels': batch['labels'].to(self.device),
@@ -194,12 +194,13 @@ class Server(object):
                     continue
                 loss_total_eval += loss
                 num_eval += len(batch['input_ids'])
-                if num_eval == 0:
-                    num_eval = 1e-10
-                progress_bar_eval.set_description(f'eval at round {cur_round}, loss: {loss_total_eval / num_eval}')
+                if num_eval > 0:
+                    progress_bar_eval.set_description(f'eval at round {cur_round}, loss: {loss_total_eval / num_eval}')
         print()
         print()
         self.model = self.model.cpu()
+        if num_eval == 0:
+            return 0.0
         return (loss_total_eval / num_eval).item()
 
     def eval_generate(self, cur_round):
