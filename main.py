@@ -56,7 +56,7 @@ if __name__ == '__main__':
 
     # Training
     parser.add_argument('--lr', type=float, default=0.001, help=r'learning rate \eta')
-    parser.add_argument('--weight_decay', type=float, default=0.0, help='weight decay in MeZO')
+    parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay in MeZO')
     parser.add_argument('--grad_clip', type=float, default=-100.0, help='clip the over large loss value, if < 0, disable this feature')
 
     # Training args only for `FedKSeed`

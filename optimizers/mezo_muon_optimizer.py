@@ -174,6 +174,10 @@ class MeZOMuonOptimizer(object):
                 step_size = self.lr / bias_correction1
                 denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(self.eps)
                 param.data.addcdiv_(exp_avg, denom, value=-step_size)
+
+                # Decoupled weight decay (AdamW style)
+                if self.args.weight_decay > 0.0:
+                    param.data.add_(param.data, alpha=-self.lr * self.args.weight_decay)
                 continue
 
             # For 2D+ params, apply Newton-Schulz orthogonalization
@@ -197,3 +201,7 @@ class MeZOMuonOptimizer(object):
             
             step_size = self.lr / bias_correction1
             param.data.add_(final_update, alpha=-step_size)
+
+            # Decoupled weight decay (AdamW style)
+            if self.args.weight_decay > 0.0:
+                param.data.add_(param.data, alpha=-self.lr * self.args.weight_decay)
