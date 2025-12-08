@@ -50,7 +50,7 @@ def zeropower_via_newtonschulz5(G, steps: int):
 
 
 class MeZOMuonOptimizer(object):
-    def __init__(self, model, args, lr, candidate_seeds):
+    def __init__(self, model, args, lr, candidate_seeds, state=None):
         print('FedKSeed-Muon')
         # determine which parameters to optimizes
         self.args = args
@@ -67,13 +67,19 @@ class MeZOMuonOptimizer(object):
         self.betas = (args.adam_beta1, args.adam_beta2) if hasattr(args, 'adam_beta1') and hasattr(args, 'adam_beta2') else (0.9, 0.999)
         self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-8
         self.ns_steps = args.ns_steps if hasattr(args, 'ns_steps') else 5
-        self.state = {}
+        
+        if state is not None:
+            self.state = state
+        else:
+            self.state = {}
+
         for name, param in self.named_parameters_to_optim:
-            self.state[name] = {
-                "step": 0,
-                "exp_avg": torch.zeros_like(param, memory_format=torch.preserve_format),
-                "exp_avg_sq": torch.zeros_like(param, memory_format=torch.preserve_format)
-            }
+            if name not in self.state:
+                self.state[name] = {
+                    "step": 0,
+                    "exp_avg": torch.zeros_like(param, memory_format=torch.preserve_format),
+                    "exp_avg_sq": torch.zeros_like(param, memory_format=torch.preserve_format)
+                }
         
     def zo_step(self, batch, local_seed_pool=None):
         """

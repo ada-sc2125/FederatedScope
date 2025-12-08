@@ -28,7 +28,7 @@ import math
 
 
 class MeZOAdamOptimizer(object):
-    def __init__(self, model, args, lr, candidate_seeds):
+    def __init__(self, model, args, lr, candidate_seeds, state=None):
         print('FedKSeed-Adam')
         # determine which parameters to optimizes
         self.args = args
@@ -44,13 +44,19 @@ class MeZOAdamOptimizer(object):
         # Adam-specific states
         self.betas = (args.adam_beta1, args.adam_beta2) if hasattr(args, 'adam_beta1') and hasattr(args, 'adam_beta2') else (0.9, 0.999)
         self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-8
-        self.state = {}
+        
+        if state is not None:
+            self.state = state
+        else:
+            self.state = {}
+
         for name, param in self.named_parameters_to_optim:
-            self.state[name] = {
-                "step": 0,
-                "exp_avg": torch.zeros_like(param, memory_format=torch.preserve_format),
-                "exp_avg_sq": torch.zeros_like(param, memory_format=torch.preserve_format)
-            }
+            if name not in self.state:
+                self.state[name] = {
+                    "step": 0,
+                    "exp_avg": torch.zeros_like(param, memory_format=torch.preserve_format),
+                    "exp_avg_sq": torch.zeros_like(param, memory_format=torch.preserve_format)
+                }
         
     def zo_step(self, batch, local_seed_pool=None):
         """

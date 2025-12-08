@@ -48,6 +48,7 @@ class Server(object):
         from copy import deepcopy
         self.model_w0 = deepcopy(self.model)
         self.seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
+        self.optimizer_state = {}
         
         self.device = torch.device(f'cuda:{self.args.device}')
 
@@ -98,9 +99,9 @@ class Server(object):
         
         # Choose the same optimizer as the clients
         if self.args.mezo_optimizer == 'adam':
-            framework = MeZOAdamOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+            framework = MeZOAdamOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds, state=self.optimizer_state)
         elif self.args.mezo_optimizer == 'muon':
-            framework = MeZOMuonOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
+            framework = MeZOMuonOptimizer(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds, state=self.optimizer_state)
         else: # 'sgd'
             framework = MeZOFramework(self.model, args=self.args, lr=self.args.lr, candidate_seeds=self.candidate_seeds)
 
@@ -200,6 +201,9 @@ class Server(object):
         print()
         print()
         self.model = self.model.cpu()
+        if num_eval == 0:
+            print("Warning: num_eval is 0 in eval_loss. All evaluation batches might have resulted in NaN loss.")
+            return float('inf')
         return (loss_total_eval / num_eval).item()
 
     def eval_generate(self, cur_round):

@@ -14,6 +14,7 @@ class Client(object):
         self.train_iterator = iter(self.train_loader)
         self.model = None
         self.aggregator = None
+        self.optimizer_state = {}
 
         self.device = torch.device(f'cuda:{args.device}')
         self.candidate_seeds = candidate_seeds
@@ -40,9 +41,9 @@ class Client(object):
             framework = MeZOBiasOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds, probabilities=probabilities, gradient_history=gradient_history)
         else:
             if self.args.mezo_optimizer == 'adam':
-                framework = MeZOAdamOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
+                framework = MeZOAdamOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds, state=self.optimizer_state)
             elif self.args.mezo_optimizer == 'muon':
-                framework = MeZOMuonOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
+                framework = MeZOMuonOptimizer(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds, state=self.optimizer_state)
             else: # 'sgd'
                 framework = MeZOFramework(self.model, args=self.args, lr=lr, candidate_seeds=self.candidate_seeds)
         self.model.eval()
