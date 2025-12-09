@@ -161,6 +161,7 @@ class Client(object):
                 candidate_seeds=self.candidate_seeds,
             )
 
-        for seed, grad in self.local_seed_pool.items():
+        progress_bar = tqdm(self.local_seed_pool.items(), desc=f"Client {self.idx} updating model from seed pool")
+        for seed, grad in progress_bar:
             if grad != 0.0:
                 framework.zo_update(seed=seed, grad=grad)
