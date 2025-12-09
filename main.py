@@ -347,16 +347,16 @@ if __name__ == "__main__":
     setup_seed(args.seed)
     _, eval_loader_final, _ = get_loaders(args, only_eval=True)
     server.eval_loader = eval_loader_final
-
+    
     final_eval_results = {}
-    for client in client_list:
+    for client in tqdm(client_list, desc="Final Evaluation for all clients"):
         print(f"\nEvaluating Client {client.idx}...")
         # Reconstruct client's final model from its final seed pool
         client.update_model_by_seed_pool(deepcopy(server.model_w0))
         server.model = client.model
         eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
-        client.model = None  # Clean up
-
+        client.model = None # Clean up
+        
         final_eval_results[f"client_{client.idx}"] = eval_result
         print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
 

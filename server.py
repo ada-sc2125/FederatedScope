@@ -257,7 +257,7 @@ class Server(object):
         self.model = self.model.to(self.device)
         self.model.eval()
 
-        progress_bar_eval = tqdm(range(len(self.eval_loader)))
+        # progress_bar_eval = tqdm(range(len(self.eval_loader))) # Removed tqdm
         loss_total_eval = 0.0
         num_eval = 0
 
@@ -270,16 +270,16 @@ class Server(object):
                 }
                 outputs = self.model(**batch)
                 loss = outputs.loss
-                progress_bar_eval.update(1)
+                # progress_bar_eval.update(1) # Removed tqdm update
                 if torch.isnan(loss):
                     continue
                 loss_total_eval += loss
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                progress_bar_eval.set_description(
-                    f"eval at round {cur_round}, loss: {loss_total_eval / num_eval}"
-                )
+                # progress_bar_eval.set_description( # Removed tqdm description
+                #     f"eval at round {cur_round}, loss: {loss_total_eval / num_eval}"
+                # )
         print()
         print()
         if num_eval == 0:
@@ -293,7 +293,7 @@ class Server(object):
         self.model = self.model.to(self.device)
         self.model.eval()
 
-        progress_bar_eval = tqdm(range(len(self.eval_loader)))
+        # progress_bar_eval = tqdm(range(len(self.eval_loader))) # Removed tqdm
         acc_total_eval = 0.0
         num_eval = 0
 
@@ -303,19 +303,19 @@ class Server(object):
                 label_ids = batch["labels"].to(self.device)
                 output_ids = self.model.generate(
                     input_ids=input_ids,
+                    attention_mask=batch["attention_mask"].to(
+                        self.device
+                    ),  # Added attention_mask
+                    pad_token_id=self.tokenizer.pad_token_id,  # Added pad_token_id
                     max_new_tokens=128,
                     num_beams=1,
                 )
                 acc_total_eval += rouge_score(
                     output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
                 )
-                progress_bar_eval.update(1)
+                # progress_bar_eval.update(1) # Removed tqdm update
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                progress_bar_eval.set_description(
-                    f"eval at round {cur_round}, metric: {acc_total_eval / num_eval}"
-                )
-        print()
-        print()
-        return acc_total_eval / num_eval
+                # progress_bar_eval.set_description( # Removed tqdm description
+                #     f
