@@ -272,7 +272,8 @@ if __name__ == "__main__":
             neighborhoods = create_grid_topology(client_list)
         # Convert to adjacency list of indices
         client_adj = {
-            client.idx: [n.idx for n in neighborhoods[client]] for client in client_list
+            idx: [neighbor.idx for neighbor in neighbors]
+            for idx, neighbors in neighborhoods.items()
         }
     print("Topology created.")
 
@@ -300,7 +301,7 @@ if __name__ == "__main__":
         print("--- Kicking off client model updates and local training ---")
         for client in client_list:
             # Client rebuilds its model using server's w0 and its own seed pool from the previous round
-            client.update_model_by_seed_pool(deepcopy(server.model))
+            client.update_model_by_seed_pool(deepcopy(server.model_w0))
 
             # Client trains, which updates its seed pool and sets self.model to None afterwards
             client.local_train(cur_round=r)
@@ -327,7 +328,7 @@ if __name__ == "__main__":
         print("--- Kicking off round evaluation ---")
         # Build a temporary model for the first client from its newly aggregated seed pool
         eval_client = client_list[0]
-        eval_client.update_model_by_seed_pool(deepcopy(server.model))
+        eval_client.update_model_by_seed_pool(deepcopy(server.model_w0))
         server.model = eval_client.model
         eval_result = server.eval(cur_round=r, eval_avg_acc=eval_avg_acc)
         eval_client.model = None  # Clean up the temporary model
@@ -351,7 +352,7 @@ if __name__ == "__main__":
     for client in client_list:
         print(f"\nEvaluating Client {client.idx}...")
         # Reconstruct client's final model from its final seed pool
-        client.update_model_by_seed_pool(deepcopy(server.model))
+        client.update_model_by_seed_pool(deepcopy(server.model_w0))
         server.model = client.model
         eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
         client.model = None  # Clean up

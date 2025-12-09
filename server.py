@@ -49,6 +49,7 @@ class Server(object):
             torch_dtype=torch.float16,
             trust_remote_code=True,
         )
+        self.model_w0 = deepcopy(self.model)
         self.seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
         self.optimizer_state = {}
 
