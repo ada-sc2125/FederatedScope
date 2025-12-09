@@ -81,9 +81,11 @@ class MeZOAdamOptimizer(object):
             return logits2, loss2
         if self.args.grad_clip > 0.0:
             if torch.abs(loss1 - loss2) > self.args.grad_clip:
+                print(f"Debug: Grad clipped. loss1={loss1.item()}, loss2={loss2.item()}")
                 return logits1, 0.0
 
         self.projected_grad = ((loss1 - loss2) / (2 * self.zo_eps)).item()
+        print(f"Debug: loss1={loss1.item()}, loss2={loss2.item()}, projected_grad={self.projected_grad}")
         self.zo_update()
         
         if local_seed_pool is not None:
