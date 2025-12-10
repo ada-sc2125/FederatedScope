@@ -154,6 +154,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--adam_eps", type=float, default=1e-8, help="epsilon for MeZO-Adam"
     )
+    parser.add_argument(
+        "--muon_lr", type=float, default=0.02, help="learning rate for Muon optimizer"
+    )
     parser.add_argument("--mu", type=float, default=0.9, help="mu for MeZO-Muon")
     parser.add_argument(
         "--ns_steps", type=int, default=5, help="Number of Newton-Schulz steps for Muon"

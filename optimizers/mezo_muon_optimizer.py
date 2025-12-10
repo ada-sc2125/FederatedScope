@@ -30,10 +30,16 @@ import math
 
 def zeropower_via_newtonschulz5(G, steps: int):
     """
-    Newton-Schulz iteration to compute the zeroth power / orthogonalization of G.
+    Newton-Schulz iteration to compute the zeroth power / orthogonalization of G. We opt to use a
+    quintic iteration whose coefficients are selected to maximize the slope at zero. For the purpose
+    of minimizing steps, it turns out to be empirically effective to keep increasing the slope at
+    zero even beyond the point where the iteration no longer converges all the way to one everywhere
+    on the interval. This iteration therefore does not produce UV^T but rather something like US'V^T
+    where S' is diagonal with S_{ii}' ~ Uniform(0.5, 1.5), which turns out not to hurt model
+    performance at all relative to UV^T, where USV^T = G is the SVD.
     """
-    assert G.ndim >= 2
-    a, b, c = (3.4445, -4.7750, 2.0315)
+    assert G.ndim >= 2 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
+    a, b, c = (3.4445, -4.7750,  2.0315)
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
@@ -43,12 +49,22 @@ def zeropower_via_newtonschulz5(G, steps: int):
     # Perform the NS iterations
     for _ in range(steps):
         A = X @ X.mT
-        B = b * A + c * A @ A
+        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
         X = a * X + B @ X
-
+    
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X
+
+
+def muon_update(grad, momentum, beta=0.95, ns_steps=5, nesterov=True):
+    momentum.lerp_(grad, 1 - beta)
+    update = grad.lerp_(momentum, beta) if nesterov else momentum
+    if update.ndim == 4: # for the case of conv filters
+        update = update.view(len(update), -1)
+    update = zeropower_via_newtonschulz5(update, steps=ns_steps)
+    update *= max(1, grad.size(-2) / grad.size(-1))**0.5
+    return update
 
 
 class MeZOMuonOptimizer(object):
@@ -72,7 +88,11 @@ class MeZOMuonOptimizer(object):
             else (0.9, 0.999)
         )
         self.eps = args.adam_eps if hasattr(args, "adam_eps") else 1e-8
+        
+        # Muon-specific states
+        self.momentum = args.momentum if hasattr(args, "momentum") else 0.95
         self.ns_steps = args.ns_steps if hasattr(args, "ns_steps") else 5
+        self.muon_lr = args.muon_lr if hasattr(args, "muon_lr") else 0.02
 
         if state is not None:
             self.state = state
@@ -81,15 +101,24 @@ class MeZOMuonOptimizer(object):
 
         for name, param in self.named_parameters_to_optim:
             if name not in self.state:
-                self.state[name] = {
-                    "step": 0,
-                    "exp_avg": torch.zeros_like(
-                        param, dtype=torch.float32, memory_format=torch.preserve_format
-                    ),
-                    "exp_avg_sq": torch.zeros_like(
-                        param, dtype=torch.float32, memory_format=torch.preserve_format
-                    ),
-                }
+                if param.ndim >= 2:
+                    # Muon state: reuse 'exp_avg' as momentum buffer to be compatible with client.py data moving
+                    self.state[name] = {
+                        "exp_avg": torch.zeros_like(
+                            param, dtype=torch.float32, memory_format=torch.preserve_format
+                        )
+                    }
+                else:
+                    # Adam state
+                    self.state[name] = {
+                        "step": 0,
+                        "exp_avg": torch.zeros_like(
+                            param, dtype=torch.float32, memory_format=torch.preserve_format
+                        ),
+                        "exp_avg_sq": torch.zeros_like(
+                            param, dtype=torch.float32, memory_format=torch.preserve_format
+                        ),
+                    }
 
     def zo_step(self, batch, local_seed_pool=None):
         """
@@ -152,7 +181,7 @@ class MeZOMuonOptimizer(object):
 
     def zo_update(self, seed=None, grad=None):
         """
-        Update the parameters with the estimated gradients using Muon-Adam-like update.
+        Update the parameters with the estimated gradients using Muon (for >=2D) or Adam (for <2D).
         """
 
         effective_grad = grad if grad is not None else self.projected_grad
@@ -172,61 +201,50 @@ class MeZOMuonOptimizer(object):
 
             # Gradient for this parameter is projected_grad * z
             g = effective_grad * z
-
             param_state = self.state[name]
-            exp_avg, exp_avg_sq = param_state["exp_avg"], param_state["exp_avg_sq"]
-            beta1, beta2 = self.betas
 
-            param_state["step"] += 1
+            if param.ndim >= 2:
+                # Muon update for >= 2D parameters
+                # We use 'exp_avg' to store the momentum buffer
+                momentum_buffer = param_state["exp_avg"]
+                
+                # Apply Muon update
+                # Note: muon_update modifies momentum_buffer in-place if using lerp_
+                update = muon_update(
+                    g, 
+                    momentum_buffer, 
+                    beta=self.momentum, 
+                    ns_steps=self.ns_steps, 
+                    nesterov=True
+                )
+                
+                # Weight decay
+                if self.args.weight_decay > 0.0:
+                    param.data.mul_(1 - self.muon_lr * self.args.weight_decay)
+                
+                # Apply update
+                param.data.add_(update.reshape(param.shape), alpha=-self.muon_lr)
+            
+            else:
+                # Adam update for < 2D parameters (AuxAdam)
+                exp_avg, exp_avg_sq = param_state["exp_avg"], param_state["exp_avg_sq"]
+                beta1, beta2 = self.betas
 
-            # Adam state update
-            exp_avg.mul_(beta1).add_(g, alpha=1 - beta1)
-            exp_avg_sq.mul_(beta2).addcmul_(g, g, value=1 - beta2)
+                param_state["step"] += 1
 
-            step = param_state["step"]
-            bias_correction1 = 1 - beta1**step
-            bias_correction2 = 1 - beta2**step
+                # Adam state update
+                exp_avg.mul_(beta1).add_(g, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(g, g, value=1 - beta2)
 
-            # For 1D params (biases, etc.), just do the normal Adam update
-            if param.ndim < 2:
+                step = param_state["step"]
+                bias_correction1 = 1 - beta1**step
+                bias_correction2 = 1 - beta2**step
+
                 step_size = self.lr / bias_correction1
                 denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(self.eps)
-                param.data.addcdiv_(exp_avg, denom, value=-step_size)
-
+                
                 # Decoupled weight decay (AdamW style)
                 if self.args.weight_decay > 0.0:
                     param.data.add_(param.data, alpha=-self.lr * self.args.weight_decay)
-                continue
 
-            # For 2D+ params, apply Newton-Schulz orthogonalization
-
-            # This is the Adam-calculated update direction
-            update_direction = exp_avg / (
-                exp_avg_sq.sqrt() / math.sqrt(bias_correction2) + self.eps
-            )
-
-            original_shape = update_direction.shape
-            if update_direction.ndim > 2:
-                update_direction_2d = update_direction.reshape(original_shape[0], -1)
-            else:
-                update_direction_2d = update_direction
-
-            # Apply Newton-Schulz
-            orthogonalized_update = zeropower_via_newtonschulz5(
-                update_direction_2d, steps=self.ns_steps
-            )
-
-            # Rescale
-            orthogonalized_update *= (
-                max(1, update_direction_2d.size(-2) / update_direction_2d.size(-1))
-                ** 0.5
-            )
-
-            final_update = orthogonalized_update.reshape(original_shape)
-
-            step_size = self.lr / bias_correction1
-            param.data.add_(final_update, alpha=-step_size)
-
-            # Decoupled weight decay (AdamW style)
-            if self.args.weight_decay > 0.0:
-                param.data.add_(param.data, alpha=-self.lr * self.args.weight_decay)
+                param.data.addcdiv_(exp_avg, denom, value=-step_size)
