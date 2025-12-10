@@ -76,8 +76,10 @@ class MeZOAdamOptimizer(object):
         self._zo_perturb_parameters(scaling_factor=1)
         
         if torch.isnan(loss1):
+            print(f"Debug: loss1 is NaN. Returning early.")
             return logits1, loss1
         if torch.isnan(loss2):
+            print(f"Debug: loss2 is NaN. Returning early.")
             return logits2, loss2
         if self.args.grad_clip > 0.0:
             if torch.abs(loss1 - loss2) > self.args.grad_clip:
@@ -100,13 +102,15 @@ class MeZOAdamOptimizer(object):
         """
         torch.manual_seed(self.zo_random_seed)
 
-        for _, param in self.named_parameters_to_optim:
+        for name, param in self.named_parameters_to_optim:
+            # print(f"Debug: {name} param.data.norm() before perturb: {param.data.norm().item()}")
             z = torch.normal(mean=0,
                              std=1,
                              size=param.data.size(),
                              device=param.data.device,
                              dtype=param.data.dtype)
             param.data = param.data + scaling_factor * self.zo_eps * z
+            # print(f"Debug: {name} param.data.norm() after perturb: {param.data.norm().item()}")
 
     def zo_forward(self, batch):
         """
@@ -128,13 +132,17 @@ class MeZOAdamOptimizer(object):
         torch.manual_seed(effective_seed)
         
         for name, param in self.named_parameters_to_optim:
+            # print(f"Debug: {name} param.data.norm() before update: {param.data.norm().item()}")
+            param_state = self.state[name]
+            # print(f"Debug: {name} exp_avg.norm() before update: {param_state['exp_avg'].norm().item()}")
+            # print(f"Debug: {name} exp_avg_sq.norm() before update: {param_state['exp_avg_sq'].norm().item()}")
+
             # Resample the same perturbation vector z
             z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)
             
             # Gradient for this parameter is projected_grad * z
             g = effective_grad * z
             
-            param_state = self.state[name]
             exp_avg, exp_avg_sq = param_state["exp_avg"], param_state["exp_avg_sq"]
             beta1, beta2 = self.betas
 
@@ -152,8 +160,10 @@ class MeZOAdamOptimizer(object):
             
             denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(self.eps)
             
+            # print(f"Debug: {name} denom.norm(): {denom.norm().item()}, step_size: {step_size}")
             param.data.addcdiv_(exp_avg, denom, value=-step_size)
 
             # Decoupled weight decay (AdamW style)
             if self.args.weight_decay > 0.0:
                 param.data.add_(param.data, alpha=-self.lr * self.args.weight_decay)
+            # print(f"Debug: {name} param.data.norm() after update: {param.data.norm().item()}")
