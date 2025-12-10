@@ -22,13 +22,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
 import torch
 import numpy as np
 
 
 class MeZOFramework(object):
     def __init__(self, model, args, lr, candidate_seeds):
-        print('FedKSeed')
+        print("FedKSeed")
         # determine which parameters to optimizes
         self.args = args
         self.lr = lr
@@ -39,35 +40,41 @@ class MeZOFramework(object):
                 self.named_parameters_to_optim.append((name, param))
         self.zo_eps = self.args.zo_eps
         self.candidate_seeds = candidate_seeds
-        
+
     def zo_step(self, batch, local_seed_pool=None):
         """
         Estimate gradient by MeZO. Return the loss from f(theta + z)
         """
         # Sample the random seed for sampling z
         self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0]
-        
+
         self._zo_perturb_parameters(scaling_factor=1)
         logits1, loss1 = self.zo_forward(batch)
 
         # Second function evaluation
         self._zo_perturb_parameters(scaling_factor=-2)
         logits2, loss2 = self.zo_forward(batch)
-        
+
         # Reset model back to its parameters at start of step
         self._zo_perturb_parameters(scaling_factor=1)
-        
+
         if torch.isnan(loss1):
             return logits1, loss1
         if torch.isnan(loss2):
             return logits2, loss2
         if self.args.grad_clip > 0.0:
             if torch.abs(loss1 - loss2) > self.args.grad_clip:
+                print(
+                    f"Debug: Grad clipped. loss1={loss1.item()}, loss2={loss2.item()}"
+                )
                 return logits1, 0.0
 
         self.projected_grad = ((loss1 - loss2) / (2 * self.zo_eps)).item()
+        print(
+            f"Debug: loss1={loss1.item()}, loss2={loss2.item()}, projected_grad={self.projected_grad}"
+        )
         self.zo_update()
-        
+
         if local_seed_pool is not None:
             local_seed_pool[self.zo_random_seed] += self.projected_grad
         return logits1, loss1
@@ -81,11 +88,13 @@ class MeZOFramework(object):
         torch.manual_seed(self.zo_random_seed)
 
         for _, param in self.named_parameters_to_optim:
-            z = torch.normal(mean=0,
-                             std=1,
-                             size=param.data.size(),
-                             device=param.data.device,
-                             dtype=param.data.dtype)
+            z = torch.normal(
+                mean=0,
+                std=1,
+                size=param.data.size(),
+                device=param.data.device,
+                dtype=param.data.dtype,
+            )
             param.data = param.data + scaling_factor * self.zo_eps * z
 
     def zo_forward(self, batch):
@@ -96,7 +105,7 @@ class MeZOFramework(object):
         logits = outputs.logits
         loss = outputs.loss
         return logits.detach(), loss.detach()
-    
+
     def zo_update(self, seed=None, grad=None):
         """
         Update the parameters with the estimated gradients.
@@ -104,14 +113,26 @@ class MeZOFramework(object):
 
         # Reset the random seed for sampling zs
         if seed is None:
-            torch.manual_seed(self.zo_random_seed)     
+            torch.manual_seed(self.zo_random_seed)
             for name, param in self.named_parameters_to_optim:
                 # Resample z
-                z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)
+                z = torch.normal(
+                    mean=0,
+                    std=1,
+                    size=param.data.size(),
+                    device=param.data.device,
+                    dtype=param.data.dtype,
+                )
                 param.data = param.data - (self.lr * self.projected_grad) * z
         else:
             torch.manual_seed(seed)
             for name, param in self.named_parameters_to_optim:
                 # Resample z
-                z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)
+                z = torch.normal(
+                    mean=0,
+                    std=1,
+                    size=param.data.size(),
+                    device=param.data.device,
+                    dtype=param.data.dtype,
+                )
                 param.data = param.data - (self.lr * grad) * z
