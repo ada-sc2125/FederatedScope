@@ -31,6 +31,17 @@ class Client(object):
     ):
         self.model.to(self.device)
 
+        # Move optimizer state to GPU
+        for name in self.optimizer_state:
+            if "exp_avg" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
+                    "exp_avg"
+                ].to(self.device)
+            if "exp_avg_sq" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
+                    "exp_avg_sq"
+                ].to(self.device)
+
         if memory_record_dic is not None:
             torch.cuda.empty_cache()
 
@@ -116,6 +127,17 @@ class Client(object):
                     progress_bar.set_description(
                         f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                     )
+
+        # Move optimizer state to CPU
+        for name in self.optimizer_state:
+            if "exp_avg" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
+                    "exp_avg"
+                ].cpu()
+            if "exp_avg_sq" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
+                    "exp_avg_sq"
+                ].cpu()
 
         if memory_record_dic is not None:
             memory_record_dic[self.device.index] = {}
