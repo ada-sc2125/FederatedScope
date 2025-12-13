@@ -4,6 +4,7 @@ import time
 import random
 import numpy as np
 import torch
+import torch.distributed as dist
 from server import Server
 from client import Client
 from utils_data.load_data import get_loaders
@@ -222,9 +223,31 @@ if __name__ == "__main__":
 
     previous_metric = args.eval_metric
     args.eval_metric = "loss"
-    # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+    
+    # Initialize distributed environment if applicable
+    if args.mezo_optimizer == "muon" and (int(os.environ.get("WORLD_SIZE", 1)) > 1 or torch.cuda.device_count() > 1):
+        if not dist.is_initialized():
+            # If WORLD_SIZE is set, assume torchrun/mpirun launch
+            if "WORLD_SIZE" in os.environ:
+                dist.init_process_group("nccl")
+                local_rank = int(os.environ["LOCAL_RANK"])
+                torch.cuda.set_device(local_rank)
+                args.device = local_rank
+            else:
+                # If just multiple GPUs detected but no torchrun, we can't easily switch to distributed 
+                # within this script structure without spawning. 
+                # For now, we fallback to single GPU or just warn. 
+                # Assuming the user instruction implies adapting to the environment if present.
+                print("Warning: Multiple GPUs detected but not launched via torchrun. Running in non-distributed mode.")
+                os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+    else:
+        # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+        # since only CUDA device is available, load all models on device 0
+        args.device = 0
+    
     setup_seed(args.seed)
     list_train_loader, eval_loader, _ = get_loaders(args)
 
@@ -246,7 +269,8 @@ if __name__ == "__main__":
             writer.write(config)
 
     # since only CUDA device is available, load all models on device 0
-    args.device = 0
+    # In distributed mode, args.device is set to local_rank, which is what we want.
+    # In non-distributed, args.device is 0 (relative to visible).
     device = torch.device(f"cuda:{args.device}")
 
     client_list = []

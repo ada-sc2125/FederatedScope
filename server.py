@@ -10,6 +10,8 @@ import math
 from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
+from optimizers.mezo_distributed_muon_optimizer import DistributedMeZOMuonOptimizer
+import torch.distributed as dist
 
 
 def softmax(vec):
@@ -140,13 +142,22 @@ class Server(object):
                 state=self.optimizer_state,
             )
         elif self.args.mezo_optimizer == "muon":
-            framework = MeZOMuonOptimizer(
-                self.model,
-                args=self.args,
-                lr=self.args.lr,
-                candidate_seeds=self.candidate_seeds,
-                state=self.optimizer_state,
-            )
+            if dist.is_initialized():
+                framework = DistributedMeZOMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=self.args.lr,
+                    candidate_seeds=self.candidate_seeds,
+                    state=self.optimizer_state,
+                )
+            else:
+                framework = MeZOMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=self.args.lr,
+                    candidate_seeds=self.candidate_seeds,
+                    state=self.optimizer_state,
+                )
         else:  # 'sgd'
             framework = MeZOFramework(
                 self.model,

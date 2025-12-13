@@ -1,9 +1,11 @@
 from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
+from optimizers.mezo_distributed_muon_optimizer import DistributedMeZOMuonOptimizer
 from optimizers.mezo_bias_optimizer import *
 from tqdm import tqdm
 import torch
+import torch.distributed as dist
 from aggregator import FedAvgAggregator
 from copy import deepcopy
 
@@ -72,13 +74,22 @@ class Client(object):
                     state=self.optimizer_state,
                 )
             elif self.args.mezo_optimizer == "muon":
-                framework = MeZOMuonOptimizer(
-                    self.model,
-                    args=self.args,
-                    lr=lr,
-                    candidate_seeds=self.candidate_seeds,
-                    state=self.optimizer_state,
-                )
+                if dist.is_initialized():
+                    framework = DistributedMeZOMuonOptimizer(
+                        self.model,
+                        args=self.args,
+                        lr=lr,
+                        candidate_seeds=self.candidate_seeds,
+                        state=self.optimizer_state,
+                    )
+                else:
+                    framework = MeZOMuonOptimizer(
+                        self.model,
+                        args=self.args,
+                        lr=lr,
+                        candidate_seeds=self.candidate_seeds,
+                        state=self.optimizer_state,
+                    )
             else:  # 'sgd'
                 framework = MeZOFramework(
                     self.model,
@@ -168,13 +179,22 @@ class Client(object):
                 state=self.optimizer_state,
             )
         elif self.args.mezo_optimizer == "muon":
-            framework = MeZOMuonOptimizer(
-                self.model,
-                args=self.args,
-                lr=self.args.lr,
-                candidate_seeds=self.candidate_seeds,
-                state=self.optimizer_state,
-            )
+            if dist.is_initialized():
+                framework = DistributedMeZOMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=self.args.lr,
+                    candidate_seeds=self.candidate_seeds,
+                    state=self.optimizer_state,
+                )
+            else:
+                framework = MeZOMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=self.args.lr,
+                    candidate_seeds=self.candidate_seeds,
+                    state=self.optimizer_state,
+                )
         else:  # 'sgd'
             framework = MeZOFramework(
                 self.model,
