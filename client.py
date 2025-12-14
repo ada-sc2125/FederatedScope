@@ -22,6 +22,16 @@ class Client(object):
         self.candidate_seeds = candidate_seeds
         self.local_seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        if "train_iterator" in state:
+            del state["train_iterator"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.train_iterator = None
+
     def local_train(
         self,
         cur_round,
@@ -29,6 +39,9 @@ class Client(object):
         probabilities=None,
         gradient_history=None,
     ):
+        if self.train_iterator is None:
+            self.train_iterator = iter(self.train_loader)
+
         self.model.to(self.device)
 
         # Move optimizer state to GPU
