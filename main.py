@@ -4,6 +4,8 @@ import time
 import random
 import numpy as np
 import torch
+import torch.distributed as dist
+from tqdm import tqdm
 from server import Server
 from client import Client
 from utils_data.load_data import get_loaders
@@ -299,34 +301,36 @@ if __name__ == "__main__":
     import torch.multiprocessing as mp
     from parallel_runner import gpu_worker
 
-# ... (Previous imports remain, ensure this is top-level or appropriately placed)
+    # ... (Previous imports remain, ensure this is top-level or appropriately placed)
 
     # --- Gossip Training Loop (Train -> Aggregate -> Eval) ---
-    
+
     # Setup Parallel Workers if needed
     use_parallel_workers = False
     workers = []
     task_queue = None
     result_queue = None
-    
+
     # Check if we should enable single-node multi-gpu worker mode
     # Condition: Multiple GPUs available, AND NOT running in torchrun/DDP mode
     if torch.cuda.device_count() > 1 and not dist.is_initialized():
-        print(f"\n[Manager] Detected {torch.cuda.device_count()} GPUs. Initializing Parallel Worker Mode...")
+        print(
+            f"\n[Manager] Detected {torch.cuda.device_count()} GPUs. Initializing Parallel Worker Mode..."
+        )
         use_parallel_workers = True
         try:
-            mp.set_start_method('spawn', force=True)
+            mp.set_start_method("spawn", force=True)
         except RuntimeError:
-            pass # Method already set
-            
+            pass  # Method already set
+
         task_queue = mp.Queue()
         result_queue = mp.Queue()
-        
+
         # Start Workers
         for gpu_id in range(torch.cuda.device_count()):
             p = mp.Process(
                 target=gpu_worker,
-                args=(gpu_id, task_queue, result_queue, args, candidate_seeds)
+                args=(gpu_id, task_queue, result_queue, args, candidate_seeds),
             )
             p.start()
             workers.append(p)
@@ -337,40 +341,42 @@ if __name__ == "__main__":
 
         # --- 1. Local Training Phase ---
         print("--- Kicking off client model updates and local training ---")
-        
+
         if use_parallel_workers:
             # Parallel Execution
-            print(f"[Manager] Dispatching {len(client_list)} jobs to {len(workers)} workers...")
-            
+            print(
+                f"[Manager] Dispatching {len(client_list)} jobs to {len(workers)} workers..."
+            )
+
             # 1. Enqueue Jobs
             for client in client_list:
                 # We need to strip the heavy model/optimizer state if present (should be None anyway)
-                client.model = None 
+                client.model = None
                 # Tag round info for logging
                 client.current_round_index = r
                 task_queue.put(client)
-            
+
             # 2. Collect Results
             # We expect exactly len(client_list) results
             results_received = 0
             progress_bar = tqdm(total=len(client_list), desc="Parallel Training")
-            
+
             while results_received < len(client_list):
                 client_idx, new_seed_pool = result_queue.get()
-                
+
                 if new_seed_pool is None:
                     print(f"[Manager] Error received from client {client_idx}")
                     # Handle error or continue? For now continue but maybe warn
                 else:
                     # Update the local client object with the result from worker
                     client_list[client_idx].local_seed_pool = new_seed_pool
-                
+
                 results_received += 1
                 progress_bar.update(1)
-            
+
             progress_bar.close()
             print("--- Parallel Client updates and local training finished ---")
-            
+
         else:
             # Sequential Execution (Original)
             for client in client_list:
@@ -421,7 +427,7 @@ if __name__ == "__main__":
     setup_seed(args.seed)
     _, eval_loader_final, _ = get_loaders(args, only_eval=True)
     server.eval_loader = eval_loader_final
-    
+
     final_eval_results = {}
     for client in tqdm(client_list, desc="Final Evaluation for all clients"):
         print(f"\nEvaluating Client {client.idx}...")
@@ -429,8 +435,8 @@ if __name__ == "__main__":
         client.update_model_by_seed_pool(deepcopy(server.model_w0))
         server.model = client.model
         eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
-        client.model = None # Clean up
-        
+        client.model = None  # Clean up
+
         final_eval_results[f"client_{client.idx}"] = eval_result
         print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
 
@@ -442,10 +448,10 @@ if __name__ == "__main__":
     print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
 
     # Cleanup Workers
-    if 'use_parallel_workers' in locals() and use_parallel_workers:
+    if "use_parallel_workers" in locals() and use_parallel_workers:
         print("\n[Manager] Stopping workers...")
         for _ in workers:
-            task_queue.put(None) # Sentinel
+            task_queue.put(None)  # Sentinel
         for p in workers:
             p.join()
         print("[Manager] Workers stopped.")
