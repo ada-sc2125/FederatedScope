@@ -29,6 +29,10 @@ In the future, we will merge this branch into the [llm](https://github.com/aliba
 ## Requirements
 Please see `requirements.txt`.
 
+```shell
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00001 -K 1024 --num_clients 4 -m 1 --muon_lr 0.01 --muon_lr 0.002 --mezo_optimizer muon --ns_steps 2 --topology star --log
+```
+
 ## Data Preparation
 1. Natural Instructions
 To run experiments on [Natural Instructions](https://github.com/allenai/natural-instructions), you need to unzip the downloaded dataset in directory `./data`.
@@ -44,12 +48,12 @@ The arguments can be adjusted according to the `help` information in their defin
 # On Natural Instructions, the number of clients `num_clients` does not require manual setting. 
 # It will be automatically adjusted to the number of tasks in `splits/default/train_tasks.txt`.
 python main.py --rounds 40 --model datajuicer/LLaMA-1B-dj-refine-150B --dataset instruct --lr 0.0000003 -K 4096 -m 0.05 --log
-
+```
 
 2. FedKSeed on Dolly-15K with $\alpha=0.5$
 ```Shell
 python main.py --rounds 60 --model datajuicer/LLaMA-1B-dj-refine-150B --dataset dolly --iid dir0.5 --num_clients 200 --lr 0.0000003 -K 4096 -m 0.05 --log
-
+```
 
 
 3. FedKSeed-Pro on Natural Instructions

@@ -296,8 +296,8 @@ if __name__ == "__main__":
         with open(os.path.join(log_dir, "results.json"), "w") as writer:
             json.dump({"eval_avg_acc": eval_avg_acc}, writer)
 
-import torch.multiprocessing as mp
-from parallel_runner import gpu_worker
+    import torch.multiprocessing as mp
+    from parallel_runner import gpu_worker
 
 # ... (Previous imports remain, ensure this is top-level or appropriately placed)
 
