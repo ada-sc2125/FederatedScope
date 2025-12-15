@@ -74,7 +74,7 @@ if __name__ == "__main__":
     )
 
     # Data
-    ## Arguments related to data on both datasets
+    # Arguments related to data on both datasets
     parser.add_argument(
         "--dataset", type=str, default="instruct", choices=["instruct", "dolly"]
     )
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         help="if `true`, the prompt template from alpaca is adopted",
     )
 
-    ## Arguments related to data only for Dolly-15K
+    # Arguments related to data only for Dolly-15K
     parser.add_argument(
         "--iid",
         type=str,
@@ -122,7 +122,9 @@ if __name__ == "__main__":
     )
 
     # Training
-    parser.add_argument("--lr", type=float, default=0.001, help=r"learning rate \eta")
+    parser.add_argument(
+        "--lr", type=float, default=0.0000001, help=r"learning rate \eta"
+    )
     parser.add_argument(
         "--weight_decay", type=float, default=1e-4, help="weight decay in MeZO"
     )
@@ -157,7 +159,7 @@ if __name__ == "__main__":
         "--adam_eps", type=float, default=1e-8, help="epsilon for MeZO-Adam"
     )
     parser.add_argument(
-        "--muon_lr", type=float, default=0.02, help="learning rate for Muon optimizer"
+        "--muon_lr", type=float, default=0.0005, help="learning rate for Muon optimizer"
     )
     parser.add_argument("--mu", type=float, default=0.9, help="mu for MeZO-Muon")
     parser.add_argument(
@@ -435,7 +437,12 @@ if __name__ == "__main__":
         client.update_model_by_seed_pool(deepcopy(server.model_w0))
         server.model = client.model
         eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
-        client.model = None  # Clean up
+
+        # Cleanup to prevent OOM
+        client.model = None
+        client.optimizer_state = {}  # Clear optimizer state which might be on GPU
+        server.model = None  # Release server's reference
+        torch.cuda.empty_cache()
 
         final_eval_results[f"client_{client.idx}"] = eval_result
         print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
