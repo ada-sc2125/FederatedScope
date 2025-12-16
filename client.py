@@ -235,8 +235,8 @@ class Client(object):
         loss_total_eval = 0.0
         num_eval = 0
         
-        # position = self.idx % 5
-        # progress_bar = tqdm(range(len(self.eval_loader)), position=position, leave=False, desc=f"Client {self.idx} Eval")
+        position = self.idx % 5
+        progress_bar = tqdm(total=len(self.eval_loader), position=position, leave=False, desc=f"Client {self.idx} Eval Loss")
 
         with torch.inference_mode():
             for batch in self.eval_loader:
@@ -247,15 +247,16 @@ class Client(object):
                 }
                 outputs = self.model(**batch)
                 loss = outputs.loss
-                # progress_bar.update(1)
+                progress_bar.update(1)
                 if torch.isnan(loss):
                     continue
                 loss_total_eval += loss
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                # progress_bar.set_description(f"Client {self.idx} eval loss: {loss_total_eval / num_eval}")
+                progress_bar.set_description(f"Client {self.idx} eval loss: {loss_total_eval / num_eval:.4f}")
         
+        progress_bar.close()
         if num_eval == 0:
             return float("inf")
         return (loss_total_eval / num_eval).item()
@@ -267,8 +268,8 @@ class Client(object):
         acc_total_eval = 0.0
         num_eval = 0
         
-        # position = self.idx % 5
-        # progress_bar = tqdm(range(len(self.eval_loader)), position=position, leave=False, desc=f"Client {self.idx} Eval")
+        position = self.idx % 5
+        progress_bar = tqdm(total=len(self.eval_loader), position=position, leave=False, desc=f"Client {self.idx} Eval ROUGE")
 
         with torch.inference_mode():
             for batch in self.eval_loader:
@@ -284,10 +285,11 @@ class Client(object):
                 acc_total_eval += rouge_score(
                     output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
                 )
-                # progress_bar.update(1)
+                progress_bar.update(1)
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                # progress_bar.set_description(f"Client {self.idx} eval acc: {acc_total_eval / num_eval}")
+                progress_bar.set_description(f"Client {self.idx} eval acc: {acc_total_eval / num_eval:.4f}")
         
+        progress_bar.close()
         return acc_total_eval / num_eval
