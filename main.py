@@ -361,8 +361,7 @@ if __name__ == "__main__":
             # 2. Collect Results
             # We expect exactly len(client_list) results
             results_received = 0
-            progress_bar = tqdm(total=len(client_list), desc="Parallel Training")
-
+            
             while results_received < len(client_list):
                 client_idx, new_seed_pool = result_queue.get()
 
@@ -374,9 +373,8 @@ if __name__ == "__main__":
                     client_list[client_idx].local_seed_pool = new_seed_pool
 
                 results_received += 1
-                progress_bar.update(1)
+                # print(f"[Manager] Received update from client {client_idx} ({results_received}/{len(client_list)})")
 
-            progress_bar.close()
             print("--- Parallel Client updates and local training finished ---")
 
         else:

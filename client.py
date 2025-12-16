@@ -104,7 +104,8 @@ class Client(object):
             if self.args.batch_or_epoch == "batch":
                 loss_total_train = 0.0
                 num_trained = 0
-                progress_bar = tqdm(range(iter_steps))
+                # Use position based on client idx to avoid conflict (max 5 concurrent)
+                progress_bar = tqdm(range(iter_steps), position=self.idx % 5, leave=False, desc=f"Client {self.idx}")
 
             for cur_step in range(iter_steps):
                 # init epoch progress bar
@@ -112,7 +113,7 @@ class Client(object):
                     if cur_step % len(self.train_loader) == 0:
                         loss_total_train = 0.0
                         num_trained = 0
-                        progress_bar = tqdm(range(len(self.train_loader)))
+                        progress_bar = tqdm(range(len(self.train_loader)), position=self.idx % 5, leave=False, desc=f"Client {self.idx}")
                 try:
                     batch = next(self.train_iterator)
                 except StopIteration:
