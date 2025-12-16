@@ -258,12 +258,12 @@ if __name__ == "__main__":
     # sample `K` candidate seeds
     candidate_seeds = np.random.randint(1, 100000000000, args.K)
 
-    # Server is now mainly for evaluation
+    # Server is now mainly for evaluation (aggregation mostly)
     server = Server(
         args, eval_loader=eval_loader, candidate_seeds=candidate_seeds, log_dir=log_dir
     )
     for idx in range(args.num_clients):
-        client_list.append(Client(idx, args, candidate_seeds, list_train_loader[idx]))
+        client_list.append(Client(idx, args, candidate_seeds, list_train_loader[idx], eval_loader))
 
     # --- Create network topology ---
     print(f"Creating '{args.topology}' topology...")
@@ -292,6 +292,7 @@ if __name__ == "__main__":
     server.model.to(device)
     eval_result = server.eval(cur_round=0, eval_avg_acc=eval_avg_acc)
     server.model.to("cpu")  # Keep server model on CPU when not evaluating
+    torch.cuda.empty_cache() # Release GPU memory from main process context
     eval_avg_acc.append(eval_result)
 
     if args.log:
@@ -356,7 +357,7 @@ if __name__ == "__main__":
                 client.model = None
                 # Tag round info for logging
                 client.current_round_index = r
-                task_queue.put(client)
+                task_queue.put(('TRAIN', client))
 
             # 2. Collect Results
             # We expect exactly len(client_list) results
@@ -406,14 +407,38 @@ if __name__ == "__main__":
 
         # --- 3. Round Evaluation ---
         print("--- Kicking off round evaluation ---")
-        # Build a temporary model for the first client from its newly aggregated seed pool
-        eval_client = client_list[0]
-        eval_client.update_model_by_seed_pool(deepcopy(server.model_w0))
-        server.model = eval_client.model
-        eval_result = server.eval(cur_round=r, eval_avg_acc=eval_avg_acc)
-        eval_client.model = None  # Clean up the temporary model
-        eval_avg_acc.append(eval_result)
-        print("--- Round evaluation finished ---")
+        
+        round_eval_metrics = []
+        if use_parallel_workers:
+            # Parallel Evaluation
+            print(f"[Manager] Dispatching evaluation jobs...")
+            for client in client_list:
+                client.model = None
+                client.current_round_index = r
+                task_queue.put(('EVAL', client))
+            
+            results_received = 0
+            while results_received < len(client_list):
+                client_idx, eval_result = result_queue.get()
+                if eval_result is not None:
+                    round_eval_metrics.append(eval_result)
+                else:
+                    print(f"[Manager] Error in evaluation for client {client_idx}")
+                results_received += 1
+        else:
+            # Sequential Evaluation
+            for client in client_list:
+                client.update_model_by_seed_pool(deepcopy(server.model_w0))
+                eval_result = client.eval(cur_round=r)
+                client.model = None
+                client.optimizer_state = {}
+                torch.cuda.empty_cache()
+                round_eval_metrics.append(eval_result)
+
+        # Average metric across all clients
+        avg_metric = np.mean(round_eval_metrics) if round_eval_metrics else float('inf')
+        eval_avg_acc.append(avg_metric)
+        print(f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---")
 
         if args.log:
             with open(os.path.join(log_dir, "memory.json"), "w") as writer:
@@ -426,30 +451,47 @@ if __name__ == "__main__":
     args.eval_metric = previous_metric
     setup_seed(args.seed)
     _, eval_loader_final, _ = get_loaders(args, only_eval=True)
-    server.eval_loader = eval_loader_final
+    server.eval_loader = eval_loader_final # Update server loader if needed
 
     final_eval_results = {}
-    for client in tqdm(client_list, desc="Final Evaluation for all clients"):
-        print(f"\nEvaluating Client {client.idx}...")
-        # Reconstruct client's final model from its final seed pool
-        client.update_model_by_seed_pool(deepcopy(server.model_w0))
-        server.model = client.model
-        eval_result = server.eval(cur_round=args.rounds, eval_avg_acc=eval_avg_acc)
+    
+    # Update all clients with the final eval loader
+    for client in client_list:
+        client.eval_loader = eval_loader_final
 
-        # Cleanup to prevent OOM
-        client.model = None
-        client.optimizer_state = {}  # Clear optimizer state which might be on GPU
-        server.model = None  # Release server's reference
-        torch.cuda.empty_cache()
+    if use_parallel_workers:
+        print("[Manager] Dispatching final evaluation jobs...")
+        for client in client_list:
+            client.model = None
+            client.current_round_index = args.rounds
+            task_queue.put(('EVAL', client))
+        
+        results_received = 0
+        while results_received < len(client_list):
+            client_idx, eval_result = result_queue.get()
+            if eval_result is not None:
+                final_eval_results[f"client_{client_idx}"] = eval_result
+                # print(f"Client {client_idx} final {args.eval_metric}: {eval_result}")
+            results_received += 1
+    else:
+        for client in tqdm(client_list, desc="Final Evaluation for all clients"):
+            # Reconstruct client's final model from its final seed pool
+            client.update_model_by_seed_pool(deepcopy(server.model_w0))
+            eval_result = client.eval(cur_round=args.rounds)
+            
+            # Cleanup to prevent OOM
+            client.model = None
+            client.optimizer_state = {}  
+            torch.cuda.empty_cache()
 
-        final_eval_results[f"client_{client.idx}"] = eval_result
-        print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
+            final_eval_results[f"client_{client.idx}"] = eval_result
+            print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
 
     if args.log:
         with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
             json.dump(final_eval_results, writer)
 
-    avg_final_eval = np.mean(list(final_eval_results.values()))
+    avg_final_eval = np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
     print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
 
     # Cleanup Workers

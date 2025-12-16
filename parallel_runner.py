@@ -13,10 +13,6 @@ def gpu_worker(gpu_id, task_queue, result_queue, args, candidate_seeds):
     try:
         # 1. Setup Environment
         device = torch.device(f"cuda:{gpu_id}")
-        # Only visible device for this process is the assigned one to prevent OOM or context conflicts
-        # os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id) 
-        # Note: setting env inside process might not work if cuda already init. 
-        # Better to rely on .to(device) with specific index.
         
         print(f"[Worker {gpu_id}] Initializing on {device}...")
 
@@ -34,56 +30,54 @@ def gpu_worker(gpu_id, task_queue, result_queue, args, candidate_seeds):
 
         # 3. Task Loop
         while True:
-            task = task_queue.get()
-            if task is None:
+            task_data = task_queue.get()
+            if task_data is None:
                 # Sentinel received, exit
                 break
             
-            client = task
-            # print(f"[Worker {gpu_id}] Processing Client {client.idx}")
+            # Unpack task: expects (task_type, client)
+            if isinstance(task_data, tuple):
+                task_type, client = task_data
+            else:
+                # Legacy support or error? Assume TRAIN if just client
+                task_type = 'TRAIN'
+                client = task_data
 
             try:
-                # A. Update Client's Model Context
-                # We essentially perform: client.update_model_by_seed_pool(deepcopy(server.model_w0))
-                # But we use the local worker's copy of model_w0
-                
+                # A. Update Client's Model Context (Common for TRAIN and EVAL)
                 # IMPORTANT: Set the device for the client to this worker's GPU
                 client.device = device
+                client.args.device = gpu_id # Update args device too
                 
-                # Reconstruct model from seed pool
-                # This logic mimics client.update_model_by_seed_pool but uses local model_w0
-                # We manually inject the model to avoid re-initializing logic that might create new optimizers prematurely
+                # Reconstruct model from seed pool using local model_w0
                 client.model = deepcopy(model_w0)
                 client.model.to(device)
                 
-                # Re-initialize the optimizer/framework on this new model & device
-                # We call the internal helper or just replicate the logic from client.update_model_by_seed_pool
-                # but without passing the model as argument (since we set it above)
-                
-                # Trigger the seed pool replay
-                # Note: We need to make sure update_model_by_seed_pool doesn't try to move things to 'args.device' 
-                # if 'args.device' is different from our 'gpu_id'. 
-                # We hack args.device locally for this client
-                client.args.device = gpu_id 
-                
-                # We use a slightly modified call logic here to ensure it uses the WORKER'S existing model
-                # instead of passing one in, or we pass the one we just created.
+                # Apply seed pool updates
+                # We pass the model to update_model_by_seed_pool which sets client.model
                 client.update_model_by_seed_pool(client.model)
                 
-                # B. Local Train
-                client.local_train(cur_round=client.current_round_index)
-                
-                # C. Return Result
-                # We only need to return the updated seed pool and the client index
-                # Returning the whole client might be heavy but ensures all state is preserved
-                # To save bandwidth, we strip the model before sending back
-                client.model = None
-                client.optimizer_state = {} # Clear optimizer state to save pickling
-                
-                result_queue.put((client.idx, client.local_seed_pool))
+                # B. Execute Task
+                if task_type == 'TRAIN':
+                    # Local Train
+                    client.local_train(cur_round=client.current_round_index)
+                    
+                    # Result: Seed Pool
+                    client.model = None
+                    client.optimizer_state = {} 
+                    result_queue.put((client.idx, client.local_seed_pool))
+                    
+                elif task_type == 'EVAL':
+                    # Local Eval
+                    eval_metric = client.eval(cur_round=client.current_round_index)
+                    
+                    # Result: Metric
+                    client.model = None
+                    client.optimizer_state = {}
+                    result_queue.put((client.idx, eval_metric))
                 
             except Exception as e:
-                print(f"[Worker {gpu_id}] Error processing client {client.idx}: {e}")
+                print(f"[Worker {gpu_id}] Error processing client {client.idx} ({task_type}): {e}")
                 traceback.print_exc()
                 result_queue.put((client.idx, None)) # Error signal
 
