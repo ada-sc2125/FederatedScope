@@ -238,6 +238,7 @@ class Client(object):
             progress_bar.set_description(
                 f"Client {self.idx} updating model from seed pool"
             )
+        progress_bar.close() # Added this line
 
     def eval(self, cur_round):
         if self.args.eval_metric == "loss":
