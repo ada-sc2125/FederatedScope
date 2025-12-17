@@ -25,7 +25,7 @@ class Client(object):
         self.device = torch.device(f"cuda:{args.device}")
         self.candidate_seeds = candidate_seeds
         self.local_seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
-        
+
         # Initialize tokenizer for evaluation
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
         self.tokenizer.model_max_length = self.args.max_length
@@ -123,7 +123,12 @@ class Client(object):
                 loss_total_train = 0.0
                 num_trained = 0
                 # Use position based on client idx to avoid conflict (max 5 concurrent)
-                progress_bar = tqdm(range(iter_steps), position=self.idx % 5, leave=False, desc=f"Client {self.idx} Train")
+                progress_bar = tqdm(
+                    range(iter_steps),
+                    position=self.idx % 5,
+                    leave=False,
+                    desc=f"Client {self.idx} Train",
+                )
 
             for cur_step in range(iter_steps):
                 # init epoch progress bar
@@ -131,7 +136,12 @@ class Client(object):
                     if cur_step % len(self.train_loader) == 0:
                         loss_total_train = 0.0
                         num_trained = 0
-                        progress_bar = tqdm(range(len(self.train_loader)), position=self.idx % 5, leave=False, desc=f"Client {self.idx} Train")
+                        progress_bar = tqdm(
+                            range(len(self.train_loader)),
+                            position=self.idx % 5,
+                            leave=False,
+                            desc=f"Client {self.idx} Train",
+                        )
                 try:
                     batch = next(self.train_iterator)
                 except StopIteration:
@@ -215,12 +225,19 @@ class Client(object):
                 candidate_seeds=self.candidate_seeds,
             )
 
-        # progress_bar = tqdm(range(len(self.local_seed_pool)), position=self.idx % 5, leave=False, desc=f"Client {self.idx} Update")
+        progress_bar = tqdm(
+            range(len(self.local_seed_pool)),
+            position=self.idx % 5,
+            leave=False,
+            desc=f"Client {self.idx} Update",
+        )
         for i, (seed, grad) in enumerate(self.local_seed_pool.items()):
             if grad != 0.0:
                 framework.zo_update(seed=seed, grad=grad)
-            # progress_bar.update(1)
-            # progress_bar.set_description(f"Client {self.idx} updating model from seed pool")
+            progress_bar.update(1)
+            progress_bar.set_description(
+                f"Client {self.idx} updating model from seed pool"
+            )
 
     def eval(self, cur_round):
         if self.args.eval_metric == "loss":
@@ -234,9 +251,14 @@ class Client(object):
 
         loss_total_eval = 0.0
         num_eval = 0
-        
+
         position = self.idx % 5
-        progress_bar = tqdm(total=len(self.eval_loader), position=position, leave=False, desc=f"Client {self.idx} Eval Loss")
+        progress_bar = tqdm(
+            total=len(self.eval_loader),
+            position=position,
+            leave=False,
+            desc=f"Client {self.idx} Eval Loss",
+        )
 
         with torch.inference_mode():
             for batch in self.eval_loader:
@@ -254,8 +276,10 @@ class Client(object):
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                progress_bar.set_description(f"Client {self.idx} eval loss: {loss_total_eval / num_eval:.4f}")
-        
+                progress_bar.set_description(
+                    f"Client {self.idx} eval loss: {loss_total_eval / num_eval:.4f}"
+                )
+
         progress_bar.close()
         if num_eval == 0:
             return float("inf")
@@ -267,9 +291,14 @@ class Client(object):
 
         acc_total_eval = 0.0
         num_eval = 0
-        
+
         position = self.idx % 5
-        progress_bar = tqdm(total=len(self.eval_loader), position=position, leave=False, desc=f"Client {self.idx} Eval ROUGE")
+        progress_bar = tqdm(
+            total=len(self.eval_loader),
+            position=position,
+            leave=False,
+            desc=f"Client {self.idx} Eval ROUGE",
+        )
 
         with torch.inference_mode():
             for batch in self.eval_loader:
@@ -289,7 +318,9 @@ class Client(object):
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
-                progress_bar.set_description(f"Client {self.idx} eval acc: {acc_total_eval / num_eval:.4f}")
-        
+                progress_bar.set_description(
+                    f"Client {self.idx} eval acc: {acc_total_eval / num_eval:.4f}"
+                )
+
         progress_bar.close()
         return acc_total_eval / num_eval

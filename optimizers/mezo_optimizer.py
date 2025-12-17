@@ -70,9 +70,9 @@ class MeZOFramework(object):
                 return logits1, 0.0
 
         self.projected_grad = ((loss1 - loss2) / (2 * self.zo_eps)).item()
-        print(
-            f"Debug: loss1={loss1.item()}, loss2={loss2.item()}, projected_grad={self.projected_grad}"
-        )
+        # print(
+        #     f"Debug: loss1={loss1.item()}, loss2={loss2.item()}, projected_grad={self.projected_grad}"
+        # )
         self.zo_update()
 
         if local_seed_pool is not None:
