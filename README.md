@@ -30,7 +30,15 @@ In the future, we will merge this branch into the [llm](https://github.com/aliba
 Please see `requirements.txt`.
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00001 -K 1024 --num_clients 4 -m 1 --muon_lr 0.01 --muon_lr 0.002 --mezo_optimizer muon --ns_steps 2 --topology star --log
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --muon_lr 0.0005 --mezo_optimizer muon --ns_steps 2 --topology star --log
+```
+
+```shell
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --mezo_optimizer adam --topology star --log
+```
+
+```shell
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0000003 -K 1024 --num_clients 4 -m 1 --mezo_optimizer sgd --topology star --log
 ```
 
 ## Data Preparation
