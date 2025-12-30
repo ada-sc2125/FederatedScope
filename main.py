@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from tqdm import tqdm
-from server import Server
 from client import Client
 from utils_data.load_data import get_loaders
 from topologies import (
@@ -15,6 +14,8 @@ from topologies import (
     create_star_topology,
     create_grid_topology,
 )
+from aggregator import aggregate_state_dicts, aggregate_optimizer_states
+from transformers import AutoModelForCausalLM
 
 import yaml
 from copy import deepcopy
@@ -29,6 +30,16 @@ def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+
+
+def get_model(args):
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model,
+        device_map="cpu",
+        torch_dtype=torch.float16,
+        trust_remote_code=True,
+    )
+    return model
 
 
 if __name__ == "__main__":
@@ -224,8 +235,8 @@ if __name__ == "__main__":
     eval_avg_acc = []
     memory_record_dic = {}
 
-    previous_metric = args.eval_metric
-    args.eval_metric = "loss"
+    # previous_metric = args.eval_metric
+    # args.eval_metric = "loss"
     # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
@@ -258,12 +269,14 @@ if __name__ == "__main__":
     # sample `K` candidate seeds
     candidate_seeds = np.random.randint(1, 100000000000, args.K)
 
-    # Server is now mainly for evaluation (aggregation mostly)
-    server = Server(
-        args, eval_loader=eval_loader, candidate_seeds=candidate_seeds, log_dir=log_dir
-    )
+    # Load base model (template)
+    print("Loading base model...")
+    base_model = get_model(args)
+
     for idx in range(args.num_clients):
-        client_list.append(Client(idx, args, candidate_seeds, list_train_loader[idx], eval_loader))
+        client_list.append(
+            Client(idx, args, candidate_seeds, list_train_loader[idx], eval_loader)
+        )
 
     # --- Create network topology ---
     print(f"Creating '{args.topology}' topology...")
@@ -284,16 +297,19 @@ if __name__ == "__main__":
         }
     print("Topology created.")
 
-    # # Initialize all client models with the server's initial model (on CPU)
-    # for client in client_list:
-    #     client.model = deepcopy(server.model)
+    # Initialize client models (Persistent in Memory)
+    print("Initializing client models...")
+    for client in client_list:
+        client.model = deepcopy(base_model)
+    print("Client models initialized.")
 
-    # Initial evaluation (evaluating the initial model)
-    server.model.to(device)
-    eval_result = server.eval(cur_round=0, eval_avg_acc=eval_avg_acc)
-    server.model.to("cpu")  # Keep server model on CPU when not evaluating
-    torch.cuda.empty_cache() # Release GPU memory from main process context
+    # Initial evaluation (evaluating the initial model using the first client as a runner)
+    print("Performing initial evaluation...")
+    eval_result = client_list[0].eval(cur_round=0)
+    torch.cuda.empty_cache()
+
     eval_avg_acc.append(eval_result)
+    print(f"Initial evaluation result: {eval_result}")
 
     if args.log:
         with open(os.path.join(log_dir, "memory.json"), "w") as writer:
@@ -301,43 +317,8 @@ if __name__ == "__main__":
         with open(os.path.join(log_dir, "results.json"), "w") as writer:
             json.dump({"eval_avg_acc": eval_avg_acc}, writer)
 
-    import torch.multiprocessing as mp
-    from parallel_runner import gpu_worker
-
-    # ... (Previous imports remain, ensure this is top-level or appropriately placed)
-
-    # --- Gossip Training Loop (Train -> Aggregate -> Eval) ---
-
-    # Setup Parallel Workers if needed
+    # Disable parallel workers for now as the logic has changed significantly
     use_parallel_workers = False
-    workers = []
-    task_queue = None
-    result_queue = None
-
-    # Check if we should enable single-node multi-gpu worker mode
-    # Condition: Multiple GPUs available, AND NOT running in torchrun/DDP mode
-    if torch.cuda.device_count() > 1 and not dist.is_initialized():
-        print(
-            f"\n[Manager] Detected {torch.cuda.device_count()} GPUs. Initializing Parallel Worker Mode..."
-        )
-        use_parallel_workers = True
-        try:
-            mp.set_start_method("spawn", force=True)
-        except RuntimeError:
-            pass  # Method already set
-
-        task_queue = mp.Queue()
-        result_queue = mp.Queue()
-
-        # Start Workers
-        for gpu_id in range(torch.cuda.device_count()):
-            p = mp.Process(
-                target=gpu_worker,
-                args=(gpu_id, task_queue, result_queue, args, candidate_seeds),
-            )
-            p.start()
-            workers.append(p)
-        print("[Manager] All workers started.\n")
 
     for r in range(1, args.rounds + 1):
         print(f"--- Round {r}/{args.rounds} ---")
@@ -345,51 +326,27 @@ if __name__ == "__main__":
         # --- 1. Local Training Phase ---
         print("--- Kicking off client model updates and local training ---")
 
-        if use_parallel_workers:
-            # Parallel Execution
-            print(
-                f"[Manager] Dispatching {len(client_list)} jobs to {len(workers)} workers..."
-            )
+        trained_states = {}
 
-            # 1. Enqueue Jobs
-            for client in client_list:
-                # We need to strip the heavy model/optimizer state if present (should be None anyway)
-                client.model = None
-                # Tag round info for logging
-                client.current_round_index = r
-                task_queue.put(('TRAIN', client))
+        for client in client_list:
+            # Local Train (updates client.model in-place, returns CPU tensors)
+            model_state, optimizer_state = client.local_train(cur_round=r)
 
-            # 2. Collect Results
-            # We expect exactly len(client_list) results
-            results_received = 0
-            
-            while results_received < len(client_list):
-                client_idx, new_seed_pool = result_queue.get()
+            # Store update in memory for aggregation buffer
+            # We must deepcopy model_state because client.model will be overwritten in the next step
+            trained_states[client.idx] = {
+                "model": deepcopy(model_state),
+                "optimizer": deepcopy(optimizer_state),
+            }
 
-                if new_seed_pool is None:
-                    print(f"[Manager] Error received from client {client_idx}")
-                    # Handle error or continue? For now continue but maybe warn
-                else:
-                    # Update the local client object with the result from worker
-                    client_list[client_idx].local_seed_pool = new_seed_pool
+            torch.cuda.empty_cache()
 
-                results_received += 1
-                # print(f"[Manager] Received update from client {client_idx} ({results_received}/{len(client_list)})")
+        print("--- Client updates and local training finished ---")
 
-            print("--- Parallel Client updates and local training finished ---")
+        # --- 2. Aggregation & Evaluation Phase ---
+        print("--- Kicking off aggregation and evaluation ---")
 
-        else:
-            # Sequential Execution (Original)
-            for client in client_list:
-                # Client rebuilds its model using server's w0 and its own seed pool from the previous round
-                client.update_model_by_seed_pool(deepcopy(server.model_w0))
-
-                # Client trains, which updates its seed pool and sets self.model to None afterwards
-                client.local_train(cur_round=r)
-            print("--- Client updates and local training finished ---")
-
-        # --- 2. Aggregation Phase ---
-        print("--- Kicking off aggregation on the server ---")
+        # Determine current topology (random gossip changes per round)
         current_adj = client_adj
         if args.topology == "random":
             temp_neighborhoods = {}
@@ -402,43 +359,64 @@ if __name__ == "__main__":
                 for client in client_list
             }
 
-        server.aggregate_seed_pool(client_list, current_adj)
-        print("--- Aggregation finished ---")
-
-        # --- 3. Round Evaluation ---
-        print("--- Kicking off round evaluation ---")
-        
         round_eval_metrics = []
-        if use_parallel_workers:
-            # Parallel Evaluation
-            print(f"[Manager] Dispatching evaluation jobs...")
-            for client in client_list:
-                client.model = None
-                client.current_round_index = r
-                task_queue.put(('EVAL', client))
-            
-            results_received = 0
-            while results_received < len(client_list):
-                client_idx, eval_result = result_queue.get()
-                if eval_result is not None:
-                    round_eval_metrics.append(eval_result)
-                else:
-                    print(f"[Manager] Error in evaluation for client {client_idx}")
-                results_received += 1
-        else:
-            # Sequential Evaluation
-            for client in client_list:
-                client.update_model_by_seed_pool(deepcopy(server.model_w0))
-                eval_result = client.eval(cur_round=r)
-                client.model = None
-                client.optimizer_state = {}
-                torch.cuda.empty_cache()
-                round_eval_metrics.append(eval_result)
+
+        for client in client_list:
+            # Gather neighbors
+            client_id = client.idx
+            neighbor_ids = current_adj.get(client_id, [])
+            ids_to_aggregate = [client_id] + neighbor_ids
+
+            # Gather neighbor updates (CPU) from trained_states buffer
+            neighbor_model_states = [
+                trained_states[nid]["model"] for nid in ids_to_aggregate
+            ]
+            neighbor_opt_states = [
+                trained_states[nid]["optimizer"] for nid in ids_to_aggregate
+            ]
+
+            # Aggregate on GPU (as requested)
+            agg_model_state_gpu = aggregate_state_dicts(
+                neighbor_model_states, device=device
+            )
+            agg_opt_state_gpu = aggregate_optimizer_states(
+                neighbor_opt_states, device=device
+            )
+
+            # # Move back to CPU for storage and client loading
+            # agg_model_state_cpu = {k: v.cpu() for k, v in agg_model_state_gpu.items()}
+
+            # agg_opt_state_cpu = {}
+            # for k, v in agg_opt_state_gpu.items():
+            #     agg_opt_state_cpu[k] = {}
+            #     for sub_k, sub_v in v.items():
+            #         if isinstance(sub_v, torch.Tensor):
+            #             agg_opt_state_cpu[k][sub_k] = sub_v.cpu()
+            #         else:
+            #             agg_opt_state_cpu[k][sub_k] = sub_v
+
+            # Load aggregated state into client for evaluation and next round
+            # We use None for model arg because client.model is persistent
+            client.load_model_and_optimizer(
+                None, agg_model_state_gpu, agg_opt_state_gpu
+            )
+
+            # Evaluation
+            eval_result = client.eval(cur_round=r)
+            round_eval_metrics.append(eval_result)
+
+            torch.cuda.empty_cache()
+
+            # # Explicitly free GPU tensors from aggregation
+            # del agg_model_state_gpu
+            # del agg_opt_state_gpu
 
         # Average metric across all clients
-        avg_metric = np.mean(round_eval_metrics) if round_eval_metrics else float('inf')
+        avg_metric = np.mean(round_eval_metrics) if round_eval_metrics else float("inf")
         eval_avg_acc.append(avg_metric)
-        print(f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---")
+        print(
+            f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---"
+        )
 
         if args.log:
             with open(os.path.join(log_dir, "memory.json"), "w") as writer:
@@ -451,54 +429,26 @@ if __name__ == "__main__":
     args.eval_metric = previous_metric
     setup_seed(args.seed)
     _, eval_loader_final, _ = get_loaders(args, only_eval=True)
-    server.eval_loader = eval_loader_final # Update server loader if needed
 
     final_eval_results = {}
-    
+
     # Update all clients with the final eval loader
     for client in client_list:
         client.eval_loader = eval_loader_final
 
-    if use_parallel_workers:
-        print("[Manager] Dispatching final evaluation jobs...")
-        for client in client_list:
-            client.model = None
-            client.current_round_index = args.rounds
-            task_queue.put(('EVAL', client))
-        
-        results_received = 0
-        while results_received < len(client_list):
-            client_idx, eval_result = result_queue.get()
-            if eval_result is not None:
-                final_eval_results[f"client_{client_idx}"] = eval_result
-                # print(f"Client {client_idx} final {args.eval_metric}: {eval_result}")
-            results_received += 1
-    else:
-        for client in tqdm(client_list, desc="Final Evaluation for all clients"):
-            # Reconstruct client's final model from its final seed pool
-            client.update_model_by_seed_pool(deepcopy(server.model_w0))
-            eval_result = client.eval(cur_round=args.rounds)
-            
-            # Cleanup to prevent OOM
-            client.model = None
-            client.optimizer_state = {}  
-            torch.cuda.empty_cache()
+    for client in tqdm(client_list, desc="Final Evaluation for all clients"):
+        # Eval directly on persistent model
+        eval_result = client.eval(cur_round=args.rounds)
+        torch.cuda.empty_cache()
 
-            final_eval_results[f"client_{client.idx}"] = eval_result
-            print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
+        final_eval_results[f"client_{client.idx}"] = eval_result
+        print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
 
     if args.log:
         with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
             json.dump(final_eval_results, writer)
 
-    avg_final_eval = np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
+    avg_final_eval = (
+        np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
+    )
     print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
-
-    # Cleanup Workers
-    if "use_parallel_workers" in locals() and use_parallel_workers:
-        print("\n[Manager] Stopping workers...")
-        for _ in workers:
-            task_queue.put(None)  # Sentinel
-        for p in workers:
-            p.join()
-        print("[Manager] Workers stopped.")

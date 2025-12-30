@@ -24,7 +24,7 @@ class Client(object):
 
         self.device = torch.device(f"cuda:{args.device}")
         self.candidate_seeds = candidate_seeds
-        self.local_seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
+        # self.local_seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
 
         # Initialize tokenizer for evaluation
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
@@ -152,9 +152,7 @@ class Client(object):
                     "labels": batch["labels"].to(self.device),
                     "attention_mask": batch["attention_mask"].to(self.device),
                 }
-                logits, loss = framework.zo_step(
-                    batch, local_seed_pool=self.local_seed_pool
-                )
+                logits, loss = framework.zo_step(batch, local_seed_pool=None)
                 progress_bar.update(1)
                 if (not torch.isnan(loss)) and (
                     self.args.grad_clip <= 0 or loss != 0.0
@@ -190,54 +188,25 @@ class Client(object):
                 torch.cuda.max_memory_reserved(self.device)
             )
 
-        self.model = None
+        # Unload model to CPU, do not set to None
+        self.model.cpu()
+        model_state = {k: v.cpu() for k, v in self.model.state_dict().items()}
+        return model_state, self.optimizer_state
 
-    def update_model_by_seed_pool(self, pulled_model):
+    def set_parameters(self, model_state_dict, optimizer_state_dict):
         """
-        Resets the model to a pulled state and then updates it using the current local_seed_pool.
+        Sets the model parameters and optimizer state.
         """
-        self.model = pulled_model
-        self.model.to(self.device)
+        # Kept for compatibility if needed, but load_model_and_optimizer is preferred
+        pass
 
-        self.optimizer_state = {}
+    def load_model_and_optimizer(self, model, model_state_dict, optimizer_state_dict):
+        # 'model' arg is kept to match call signature in main.py, but we use self.model if set
+        if self.model is None:
+            self.model = model
 
-        if self.args.mezo_optimizer == "adam":
-            framework = MeZOAdamOptimizer(
-                self.model,
-                args=self.args,
-                lr=self.args.lr,
-                candidate_seeds=self.candidate_seeds,
-                state=self.optimizer_state,
-            )
-        elif self.args.mezo_optimizer == "muon":
-            framework = MeZOMuonOptimizer(
-                self.model,
-                args=self.args,
-                lr=self.args.lr,
-                candidate_seeds=self.candidate_seeds,
-                state=self.optimizer_state,
-            )
-        else:  # 'sgd'
-            framework = MeZOFramework(
-                self.model,
-                args=self.args,
-                lr=self.args.lr,
-                candidate_seeds=self.candidate_seeds,
-            )
-
-        progress_bar = tqdm(
-            range(len(self.local_seed_pool)),
-            position=self.idx % 5,
-            leave=False,
-            desc=f"Client {self.idx} Update",
-        )
-        for i, (seed, grad) in enumerate(self.local_seed_pool.items()):
-            if grad != 0.0:
-                framework.zo_update(seed=seed, grad=grad)
-            progress_bar.update(1)
-            progress_bar.set_description(
-                f"Client {self.idx} updating model from seed pool"
-            )
+        self.model.load_state_dict(model_state_dict)
+        self.optimizer_state = optimizer_state_dict
 
     def eval(self, cur_round):
         if self.args.eval_metric == "loss":
@@ -262,12 +231,21 @@ class Client(object):
 
         with torch.inference_mode():
             for batch in self.eval_loader:
-                batch = {
-                    "input_ids": batch["input_ids"].to(self.device),
-                    "labels": batch["labels"].to(self.device),
+                input_ids = batch["input_ids"].to(self.device)
+                labels = batch["labels"].to(self.device) # Keep labels on GPU for now
+
+                # Print input and labels
+                print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
+                print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
+                print(f"Client {self.idx} Eval Target (Labels, Round {cur_round}):")
+                print(self.tokenizer.decode(labels[0], skip_special_tokens=True))
+
+                batch_on_device = {
+                    "input_ids": input_ids,
+                    "labels": labels,
                     "attention_mask": batch["attention_mask"].to(self.device),
                 }
-                outputs = self.model(**batch)
+                outputs = self.model(**batch_on_device)
                 loss = outputs.loss
                 progress_bar.update(1)
                 if torch.isnan(loss):
@@ -281,6 +259,18 @@ class Client(object):
                 )
 
         progress_bar.close()
+
+        # Move optimizer state to CPU
+        for name in self.optimizer_state:
+            if "exp_avg" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
+                    "exp_avg"
+                ].cpu()
+            if "exp_avg_sq" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
+                    "exp_avg_sq"
+                ].cpu()
+        self.model.cpu()
         if num_eval == 0:
             return float("inf")
         return (loss_total_eval / num_eval).item()
@@ -304,6 +294,11 @@ class Client(object):
             for batch in self.eval_loader:
                 input_ids = batch["input_ids"].to(self.device)
                 label_ids = batch["labels"].to(self.device)
+                
+                # Print input
+                print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
+                print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
+
                 output_ids = self.model.generate(
                     input_ids=input_ids,
                     attention_mask=batch["attention_mask"].to(self.device),
@@ -311,6 +306,10 @@ class Client(object):
                     max_new_tokens=128,
                     num_beams=1,
                 )
+                
+                # Print output
+                print(f"Client {self.idx} Eval Output (Round {cur_round}):")
+                print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
                 acc_total_eval += rouge_score(
                     output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
                 )
@@ -323,4 +322,16 @@ class Client(object):
                 )
 
         progress_bar.close()
+        # Move optimizer state to CPU
+        for name in self.optimizer_state:
+            if "exp_avg" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
+                    "exp_avg"
+                ].cpu()
+            if "exp_avg_sq" in self.optimizer_state[name]:
+                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
+                    "exp_avg_sq"
+                ].cpu()
+
+        self.model.cpu()
         return acc_total_eval / num_eval
