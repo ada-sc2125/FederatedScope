@@ -28,7 +28,7 @@ import numpy as np
 
 
 class MeZOFramework(object):
-    def __init__(self, model, args, lr, candidate_seeds):
+    def __init__(self, model, args, lr): # Removed candidate_seeds
         print("FedKSeed")
         # determine which parameters to optimizes
         self.args = args
@@ -39,14 +39,15 @@ class MeZOFramework(object):
             if param.requires_grad:
                 self.named_parameters_to_optim.append((name, param))
         self.zo_eps = self.args.zo_eps
-        self.candidate_seeds = candidate_seeds
+        # self.candidate_seeds = candidate_seeds # Removed
 
-    def zo_step(self, batch, local_seed_pool=None):
+    def zo_step(self, batch): # Removed local_seed_pool
         """
         Estimate gradient by MeZO. Return the loss from f(theta + z)
         """
         # Sample the random seed for sampling z
-        self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0]
+        # self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0] # Changed
+        self.zo_random_seed = np.random.randint(1000000000)
 
         self._zo_perturb_parameters(scaling_factor=1)
         logits1, loss1 = self.zo_forward(batch)
@@ -75,8 +76,8 @@ class MeZOFramework(object):
         # )
         self.zo_update()
 
-        if local_seed_pool is not None:
-            local_seed_pool[self.zo_random_seed] += self.projected_grad
+        # if local_seed_pool is not None: # Removed
+        #     local_seed_pool[self.zo_random_seed] += self.projected_grad # Removed
         return logits1, loss1
 
     def _zo_perturb_parameters(self, scaling_factor=1):
@@ -106,33 +107,33 @@ class MeZOFramework(object):
         loss = outputs.loss
         return logits.detach(), loss.detach()
 
-    def zo_update(self, seed=None, grad=None):
+    def zo_update(self): # Removed seed=None, grad=None
         """
         Update the parameters with the estimated gradients.
         """
 
         # Reset the random seed for sampling zs
-        if seed is None:
-            torch.manual_seed(self.zo_random_seed)
-            for name, param in self.named_parameters_to_optim:
-                # Resample z
-                z = torch.normal(
-                    mean=0,
-                    std=1,
-                    size=param.data.size(),
-                    device=param.data.device,
-                    dtype=param.data.dtype,
-                )
-                param.data = param.data - (self.lr * self.projected_grad) * z
-        else:
-            torch.manual_seed(seed)
-            for name, param in self.named_parameters_to_optim:
-                # Resample z
-                z = torch.normal(
-                    mean=0,
-                    std=1,
-                    size=param.data.size(),
-                    device=param.data.device,
-                    dtype=param.data.dtype,
-                )
-                param.data = param.data - (self.lr * grad) * z
+        # if seed is None: # Removed
+        torch.manual_seed(self.zo_random_seed)
+        for name, param in self.named_parameters_to_optim:
+            # Resample z
+            z = torch.normal(
+                mean=0,
+                std=1,
+                size=param.data.size(),
+                device=param.data.device,
+                dtype=param.data.dtype,
+            )
+            param.data = param.data - (self.lr * self.projected_grad) * z
+        # else: # Removed
+        #     torch.manual_seed(seed) # Removed
+        #     for name, param in self.named_parameters_to_optim: # Removed
+        #         # Resample z # Removed
+        #         z = torch.normal( # Removed
+        #             mean=0, # Removed
+        #             std=1, # Removed
+        #             size=param.data.size(), # Removed
+        #             device=param.data.device, # Removed
+        #             dtype=param.data.dtype, # Removed
+        #         ) # Removed
+        #         param.data = param.data - (self.lr * grad) * z # Removed

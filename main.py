@@ -235,7 +235,7 @@ if __name__ == "__main__":
     eval_avg_acc = []
     memory_record_dic = {}
 
-    # previous_metric = args.eval_metric
+    previous_metric = args.eval_metric
     # args.eval_metric = "loss"
     # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -266,16 +266,13 @@ if __name__ == "__main__":
 
     client_list = []
 
-    # sample `K` candidate seeds
-    candidate_seeds = np.random.randint(1, 100000000000, args.K)
-
     # Load base model (template)
     print("Loading base model...")
     base_model = get_model(args)
 
     for idx in range(args.num_clients):
         client_list.append(
-            Client(idx, args, candidate_seeds, list_train_loader[idx], eval_loader)
+            Client(idx, args, list_train_loader[idx], eval_loader)
         )
 
     # --- Create network topology ---

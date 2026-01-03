@@ -1,7 +1,6 @@
 from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
-from optimizers.mezo_bias_optimizer import *
 from tqdm import tqdm
 import torch
 from aggregator import FedAvgAggregator
@@ -12,7 +11,7 @@ from transformers import AutoTokenizer
 
 
 class Client(object):
-    def __init__(self, idx, args, candidate_seeds, train_loader, eval_loader):
+    def __init__(self, idx, args, train_loader, eval_loader): # Removed candidate_seeds
         self.idx = idx
         self.args = args
         self.train_loader = train_loader
@@ -23,7 +22,7 @@ class Client(object):
         self.optimizer_state = {}
 
         self.device = torch.device(f"cuda:{args.device}")
-        self.candidate_seeds = candidate_seeds
+        # self.candidate_seeds = candidate_seeds # Removed
         # self.local_seed_pool = {seed: 0.0 for seed in self.candidate_seeds}
 
         # Initialize tokenizer for evaluation
@@ -85,21 +84,17 @@ class Client(object):
 
         if self.args.bias_sampling:
             assert probabilities is not None
-            framework = MeZOBiasOptimizer(
-                self.model,
-                args=self.args,
-                lr=lr,
-                candidate_seeds=self.candidate_seeds,
-                probabilities=probabilities,
-                gradient_history=gradient_history,
-            )
+            # MeZOBiasOptimizer is removed. This branch should ideally be removed
+            # or refactored if bias sampling is still desired with a different mechanism.
+            # For now, it will raise an error as MeZOBiasOptimizer is undefined.
+            # Assuming bias_sampling is no longer used or will be handled differently.
+            raise NotImplementedError("MeZOBiasOptimizer is not supported in this configuration.")
         else:
             if self.args.mezo_optimizer == "adam":
                 framework = MeZOAdamOptimizer(
                     self.model,
                     args=self.args,
                     lr=lr,
-                    candidate_seeds=self.candidate_seeds,
                     state=self.optimizer_state,
                 )
             elif self.args.mezo_optimizer == "muon":
@@ -107,7 +102,6 @@ class Client(object):
                     self.model,
                     args=self.args,
                     lr=lr,
-                    candidate_seeds=self.candidate_seeds,
                     state=self.optimizer_state,
                 )
             else:  # 'sgd'
@@ -115,7 +109,6 @@ class Client(object):
                     self.model,
                     args=self.args,
                     lr=lr,
-                    candidate_seeds=self.candidate_seeds,
                 )
         self.model.eval()
         with torch.inference_mode():
@@ -152,7 +145,7 @@ class Client(object):
                     "labels": batch["labels"].to(self.device),
                     "attention_mask": batch["attention_mask"].to(self.device),
                 }
-                logits, loss = framework.zo_step(batch, local_seed_pool=None)
+                logits, loss = framework.zo_step(batch) # Removed local_seed_pool
                 progress_bar.update(1)
                 if (not torch.isnan(loss)) and (
                     self.args.grad_clip <= 0 or loss != 0.0
@@ -230,7 +223,7 @@ class Client(object):
         )
 
         with torch.inference_mode():
-            for batch in self.eval_loader:
+            for i, batch in enumerate(self.eval_loader):
                 input_ids = batch["input_ids"].to(self.device)
                 labels = batch["labels"].to(self.device) # Keep labels on GPU for now
 

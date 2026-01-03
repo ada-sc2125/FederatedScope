@@ -70,7 +70,7 @@ def muon_update(grad, momentum, beta=0.95, ns_steps=5, nesterov=True):
 
 
 class MeZOMuonOptimizer(object):
-    def __init__(self, model, args, lr, candidate_seeds, state=None):
+    def __init__(self, model, args, lr, state=None): # Removed candidate_seeds
         print("FedKSeed-Muon")
         # determine which parameters to optimizes
         self.args = args
@@ -81,7 +81,7 @@ class MeZOMuonOptimizer(object):
             if param.requires_grad:
                 self.named_parameters_to_optim.append((name, param))
         self.zo_eps = self.args.zo_eps
-        self.candidate_seeds = candidate_seeds
+        # self.candidate_seeds = candidate_seeds # Removed
 
         # Adam-specific states
         self.betas = (
@@ -122,12 +122,13 @@ class MeZOMuonOptimizer(object):
                         ),
                     }
 
-    def zo_step(self, batch, local_seed_pool=None):
+    def zo_step(self, batch): # Removed local_seed_pool
         """
         Estimate gradient by MeZO. Return the loss from f(theta + z)
         """
         # Sample the random seed for sampling z
-        self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0]
+        # self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0] # Changed
+        self.zo_random_seed = np.random.randint(1000000000)
 
         self._zo_perturb_parameters(scaling_factor=1)
         logits1, loss1 = self.zo_forward(batch)
@@ -150,8 +151,8 @@ class MeZOMuonOptimizer(object):
         self.projected_grad = ((loss1 - loss2) / (2 * self.zo_eps)).item()
         self.zo_update()
 
-        if local_seed_pool is not None:
-            local_seed_pool[self.zo_random_seed] += self.projected_grad
+        # if local_seed_pool is not None: # Removed
+        #     local_seed_pool[self.zo_random_seed] += self.projected_grad # Removed
         return logits1, loss1
 
     def _zo_perturb_parameters(self, scaling_factor=1):
@@ -181,13 +182,13 @@ class MeZOMuonOptimizer(object):
         loss = outputs.loss
         return logits.detach(), loss.detach()
 
-    def zo_update(self, seed=None, grad=None):
+    def zo_update(self): # Removed seed=None, grad=None
         """
         Update the parameters with the estimated gradients using Muon (for >=2D) or Adam (for <2D).
         """
 
-        effective_grad = grad if grad is not None else self.projected_grad
-        effective_seed = seed if seed is not None else self.zo_random_seed
+        effective_grad = self.projected_grad # Simplified
+        effective_seed = self.zo_random_seed # Simplified
 
         torch.manual_seed(effective_seed)
 
