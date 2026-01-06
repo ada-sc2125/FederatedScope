@@ -227,11 +227,11 @@ class Client(object):
                 input_ids = batch["input_ids"].to(self.device)
                 labels = batch["labels"].to(self.device) # Keep labels on GPU for now
 
-                # Print input and labels
-                print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
-                print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
-                print(f"Client {self.idx} Eval Target (Labels, Round {cur_round}):")
-                print(self.tokenizer.decode(labels[0], skip_special_tokens=True))
+                # # Print input and labels
+                # print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
+                # print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
+                # print(f"Client {self.idx} Eval Target (Labels, Round {cur_round}):")
+                # print(self.tokenizer.decode(labels[0], skip_special_tokens=True))
 
                 batch_on_device = {
                     "input_ids": input_ids,
@@ -288,9 +288,9 @@ class Client(object):
                 input_ids = batch["input_ids"].to(self.device)
                 label_ids = batch["labels"].to(self.device)
                 
-                # Print input
-                print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
-                print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
+                # # Print input
+                # print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
+                # print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
 
                 output_ids = self.model.generate(
                     input_ids=input_ids,
@@ -300,9 +300,9 @@ class Client(object):
                     num_beams=1,
                 )
                 
-                # Print output
-                print(f"Client {self.idx} Eval Output (Round {cur_round}):")
-                print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
+                # # Print output
+                # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
+                # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
                 acc_total_eval += rouge_score(
                     output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
                 )

@@ -236,7 +236,7 @@ if __name__ == "__main__":
     memory_record_dic = {}
 
     previous_metric = args.eval_metric
-    # args.eval_metric = "loss"
+    args.eval_metric = "loss"
     # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
