@@ -115,11 +115,9 @@ class Client(object):
             if self.args.batch_or_epoch == "batch":
                 loss_total_train = 0.0
                 num_trained = 0
-                # Use position based on client idx to avoid conflict (max 5 concurrent)
                 progress_bar = tqdm(
                     range(iter_steps),
-                    position=self.idx % 5,
-                    leave=False,
+                    leave=True,
                     desc=f"Client {self.idx} Train",
                 )
 
@@ -131,8 +129,7 @@ class Client(object):
                         num_trained = 0
                         progress_bar = tqdm(
                             range(len(self.train_loader)),
-                            position=self.idx % 5,
-                            leave=False,
+                            leave=True,
                             desc=f"Client {self.idx} Train",
                         )
                 try:
