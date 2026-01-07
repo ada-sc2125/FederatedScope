@@ -5,6 +5,7 @@ import random
 import numpy as np
 import torch
 import torch.distributed as dist
+import resource
 from tqdm import tqdm
 from client import Client
 from utils_data.load_data import get_loaders
@@ -40,6 +41,22 @@ def get_model(args):
         trust_remote_code=True,
     )
     return model
+
+
+def log_memory(tag, device):
+    rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated(device)
+        max_allocated = torch.cuda.max_memory_allocated(device)
+        reserved = torch.cuda.memory_reserved(device)
+        max_reserved = torch.cuda.max_memory_reserved(device)
+        print(
+            f"[mem] {tag} | rss_kb={rss_kb} | cuda_alloc={allocated} "
+            f"| cuda_max_alloc={max_allocated} | cuda_reserved={reserved} "
+            f"| cuda_max_reserved={max_reserved}"
+        )
+    else:
+        print(f"[mem] {tag} | rss_kb={rss_kb}")
 
 
 if __name__ == "__main__":
@@ -346,6 +363,7 @@ if __name__ == "__main__":
         for client in client_list:
             # Local Train (updates client.model in-place, returns CPU tensors)
             model_state, optimizer_state = client.local_train(cur_round=r)
+            log_memory(f"post-train client {client.idx}", device)
 
             # Store update in memory for aggregation buffer
             # We must deepcopy model_state because client.model will be overwritten in the next step
@@ -360,6 +378,7 @@ if __name__ == "__main__":
 
         # --- 2. Aggregation & Evaluation Phase ---
         print("--- Kicking off aggregation and evaluation ---")
+        log_memory("pre-aggregation", device)
 
         # Determine current topology (random gossip changes per round)
         current_adj = client_adj
@@ -397,6 +416,7 @@ if __name__ == "__main__":
             agg_opt_state_gpu = aggregate_optimizer_states(
                 neighbor_opt_states, device=device
             )
+            log_memory(f"post-aggregation client {client.idx}", device)
 
             # # Move back to CPU for storage and client loading
             # agg_model_state_cpu = {k: v.cpu() for k, v in agg_model_state_gpu.items()}
