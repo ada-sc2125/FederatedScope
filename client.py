@@ -267,11 +267,9 @@ class Client(object):
         loss_total_eval = 0.0
         num_eval = 0
 
-        position = self.idx % 5
         progress_bar = tqdm(
             total=len(self.eval_loader),
-            position=position,
-            leave=False,
+            leave=True,
             desc=f"Client {self.idx} Eval Loss",
         )
 
@@ -323,11 +321,9 @@ class Client(object):
         acc_total_eval = 0.0
         num_eval = 0
 
-        position = self.idx % 5
         progress_bar = tqdm(
             total=len(self.eval_loader),
-            position=position,
-            leave=False,
+            leave=True,
             desc=f"Client {self.idx} Eval ROUGE",
         )
 
