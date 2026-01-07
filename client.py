@@ -135,6 +135,10 @@ class Client(object):
             for cur_step in range(iter_steps):
                 if self.args.batch_or_epoch == "epoch":
                     if cur_step % len(self.train_loader) == 0:
+                        epoch_idx = cur_step // len(self.train_loader) + 1
+                        print(
+                            f"Client {self.idx} starting epoch {epoch_idx}/{self.args.local_step}"
+                        )
                         loss_total_train = 0.0
                         num_trained = 0
                         progress_bar = tqdm(
@@ -170,6 +174,16 @@ class Client(object):
                     progress_bar.set_description(
                         f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                     )
+                if (
+                    self.args.batch_or_epoch == "epoch"
+                    and (cur_step + 1) % len(self.train_loader) == 0
+                ):
+                    epoch_idx = (cur_step + 1) // len(self.train_loader)
+                    print(
+                        f"Client {self.idx} finished epoch {epoch_idx}/{self.args.local_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                    )
+            if self.args.batch_or_epoch == "epoch" and "progress_bar" in locals():
+                progress_bar.close()
         else:
             self.model.eval()
             with torch.inference_mode():
@@ -186,6 +200,10 @@ class Client(object):
                     # init epoch progress bar
                     if self.args.batch_or_epoch == "epoch":
                         if cur_step % len(self.train_loader) == 0:
+                            epoch_idx = cur_step // len(self.train_loader) + 1
+                            print(
+                                f"Client {self.idx} starting epoch {epoch_idx}/{self.args.local_step}"
+                            )
                             loss_total_train = 0.0
                             num_trained = 0
                             progress_bar = tqdm(
@@ -218,6 +236,16 @@ class Client(object):
                         progress_bar.set_description(
                             f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                         )
+                    if (
+                        self.args.batch_or_epoch == "epoch"
+                        and (cur_step + 1) % len(self.train_loader) == 0
+                    ):
+                        epoch_idx = (cur_step + 1) // len(self.train_loader)
+                        print(
+                            f"Client {self.idx} finished epoch {epoch_idx}/{self.args.local_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                        )
+                if self.args.batch_or_epoch == "epoch" and "progress_bar" in locals():
+                    progress_bar.close()
 
         # Move optimizer state to CPU
         for name in self.optimizer_state:
