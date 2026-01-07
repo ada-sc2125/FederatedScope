@@ -15,7 +15,12 @@ from topologies import (
     create_star_topology,
     create_grid_topology,
 )
-from aggregator import aggregate_state_dicts, aggregate_optimizer_states
+from aggregator import (
+    aggregate_state_dicts,
+    aggregate_optimizer_states,
+    aggregate_state_dicts_streaming,
+    aggregate_optimizer_states_streaming,
+)
 from transformers import AutoModelForCausalLM
 
 import yaml
@@ -409,11 +414,11 @@ if __name__ == "__main__":
                 trained_states[nid]["optimizer"] for nid in ids_to_aggregate
             ]
 
-            # Aggregate on GPU (as requested)
-            agg_model_state_gpu = aggregate_state_dicts(
+            # Aggregate on GPU with streaming to limit peak memory
+            agg_model_state_gpu = aggregate_state_dicts_streaming(
                 neighbor_model_states, device=device
             )
-            agg_opt_state_gpu = aggregate_optimizer_states(
+            agg_opt_state_gpu = aggregate_optimizer_states_streaming(
                 neighbor_opt_states, device=device
             )
             log_memory(f"post-aggregation client {client.idx}", device)

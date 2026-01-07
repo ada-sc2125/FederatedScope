@@ -129,6 +129,94 @@ def aggregate_optimizer_states(optimizer_states, weights=None, device='cpu'):
                 
     return agg_opt
 
+
+def aggregate_state_dicts_streaming(state_dicts, weights=None, device='cpu'):
+    """
+    Aggregates state_dicts by streaming tensors to device one at a time to reduce peak memory.
+    """
+    if not state_dicts:
+        return None
+
+    num_models = len(state_dicts)
+    if weights is None:
+        weights = [1.0 / num_models] * num_models
+    else:
+        total_weight = sum(weights)
+        weights = [w / total_weight for w in weights]
+
+    first_state = state_dicts[0]
+    aggregated_state_dict = OrderedDict()
+    for key in first_state.keys():
+        if isinstance(first_state[key], torch.Tensor):
+            dtype = first_state[key].dtype
+            acc_dtype = torch.float32 if dtype in [torch.float16, torch.bfloat16] else dtype
+            aggregated_state_dict[key] = torch.zeros_like(first_state[key], dtype=acc_dtype, device=device)
+        else:
+            aggregated_state_dict[key] = first_state[key]
+
+    for i, state_dict in enumerate(state_dicts):
+        w = weights[i]
+        for key in aggregated_state_dict:
+            if isinstance(state_dict[key], torch.Tensor):
+                aggregated_state_dict[key].add_(state_dict[key].to(device), alpha=w)
+
+    for key in aggregated_state_dict:
+        if isinstance(aggregated_state_dict[key], torch.Tensor):
+            target_dtype = first_state[key].dtype
+            if aggregated_state_dict[key].dtype != target_dtype:
+                aggregated_state_dict[key] = aggregated_state_dict[key].to(target_dtype)
+
+    return aggregated_state_dict
+
+
+def aggregate_optimizer_states_streaming(optimizer_states, weights=None, device='cpu'):
+    """
+    Aggregates optimizer states by streaming tensors to device one at a time to reduce peak memory.
+    """
+    if not optimizer_states:
+        return {}
+
+    if not optimizer_states[0]:
+        return {}
+
+    num_states = len(optimizer_states)
+    if weights is None:
+        weights = [1.0 / num_states] * num_states
+    else:
+        total_weight = sum(weights)
+        weights = [w / total_weight for w in weights]
+
+    first_opt = optimizer_states[0]
+    agg_opt = {}
+
+    for param_name in first_opt:
+        agg_opt[param_name] = {}
+        for key in first_opt[param_name]:
+            val = first_opt[param_name][key]
+            if isinstance(val, torch.Tensor):
+                dtype = val.dtype
+                acc_dtype = torch.float32 if dtype in [torch.float16, torch.bfloat16] else dtype
+                agg_val = torch.zeros_like(val, dtype=acc_dtype, device=device)
+                for i, opt_state in enumerate(optimizer_states):
+                    if param_name in opt_state and key in opt_state[param_name]:
+                        agg_val.add_(opt_state[param_name][key].to(device), alpha=weights[i])
+                if agg_val.dtype != dtype:
+                    agg_val = agg_val.to(dtype)
+                agg_opt[param_name][key] = agg_val
+            elif isinstance(val, (int, float)):
+                agg_scalar = 0.0
+                for i, opt_state in enumerate(optimizer_states):
+                    if param_name in opt_state and key in opt_state[param_name]:
+                        agg_scalar += opt_state[param_name][key] * weights[i]
+                if isinstance(val, int):
+                    agg_opt[param_name][key] = int(agg_scalar)
+                else:
+                    agg_opt[param_name][key] = agg_scalar
+            else:
+                agg_opt[param_name][key] = val
+
+    return agg_opt
+
 class FedAvgAggregator:
     """
     Legacy class wrapper if needed, or can be removed if not used.
