@@ -1,6 +1,7 @@
 from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
+from optimizers.demuon_optimizer import DeMuonOptimizer
 from tqdm import tqdm
 import torch
 from aggregator import FedAvgAggregator
@@ -63,14 +64,9 @@ class Client(object):
 
         # Move optimizer state to GPU
         for name in self.optimizer_state:
-            if "exp_avg" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
-                    "exp_avg"
-                ].to(self.device)
-            if "exp_avg_sq" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
-                    "exp_avg_sq"
-                ].to(self.device)
+            for key, value in self.optimizer_state[name].items():
+                if isinstance(value, torch.Tensor):
+                    self.optimizer_state[name][key] = value.to(self.device)
 
         if memory_record_dic is not None:
             torch.cuda.empty_cache()
@@ -104,14 +100,21 @@ class Client(object):
                     lr=lr,
                     state=self.optimizer_state,
                 )
+            elif self.args.mezo_optimizer == "demuon":
+                framework = DeMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=lr,
+                    state=self.optimizer_state,
+                )
             else:  # 'sgd'
                 framework = MeZOFramework(
                     self.model,
                     args=self.args,
                     lr=lr,
                 )
-        self.model.eval()
-        with torch.inference_mode():
+        if self.args.mezo_optimizer == "demuon":
+            self.model.train()
             if self.args.batch_or_epoch == "batch":
                 loss_total_train = 0.0
                 num_trained = 0
@@ -122,7 +125,6 @@ class Client(object):
                 )
 
             for cur_step in range(iter_steps):
-                # init epoch progress bar
                 if self.args.batch_or_epoch == "epoch":
                     if cur_step % len(self.train_loader) == 0:
                         loss_total_train = 0.0
@@ -142,13 +144,16 @@ class Client(object):
                     "labels": batch["labels"].to(self.device),
                     "attention_mask": batch["attention_mask"].to(self.device),
                 }
-                logits, loss = framework.zo_step(batch) # Removed local_seed_pool
+                outputs = self.model(**batch)
+                loss = outputs.loss
+                if torch.isnan(loss):
+                    continue
+                loss.backward()
+                framework.step()
+                framework.zero_grad()
                 progress_bar.update(1)
-                if (not torch.isnan(loss)) and (
-                    self.args.grad_clip <= 0 or loss != 0.0
-                ):
-                    loss_total_train += loss
-                    num_trained += len(batch["input_ids"])
+                loss_total_train += loss.detach()
+                num_trained += len(batch["input_ids"])
                 if self.args.batch_or_epoch == "epoch":
                     progress_bar.set_description(
                         f"client {self.idx} train at epoch {int(cur_step / len(self.train_loader)) + 1}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
@@ -157,17 +162,60 @@ class Client(object):
                     progress_bar.set_description(
                         f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                     )
+        else:
+            self.model.eval()
+            with torch.inference_mode():
+                if self.args.batch_or_epoch == "batch":
+                    loss_total_train = 0.0
+                    num_trained = 0
+                    progress_bar = tqdm(
+                        range(iter_steps),
+                        leave=True,
+                        desc=f"Client {self.idx} Train",
+                    )
+
+                for cur_step in range(iter_steps):
+                    # init epoch progress bar
+                    if self.args.batch_or_epoch == "epoch":
+                        if cur_step % len(self.train_loader) == 0:
+                            loss_total_train = 0.0
+                            num_trained = 0
+                            progress_bar = tqdm(
+                                range(len(self.train_loader)),
+                                leave=True,
+                                desc=f"Client {self.idx} Train",
+                            )
+                    try:
+                        batch = next(self.train_iterator)
+                    except StopIteration:
+                        self.train_iterator = iter(self.train_loader)
+                        batch = next(self.train_iterator)
+                    batch = {
+                        "input_ids": batch["input_ids"].to(self.device),
+                        "labels": batch["labels"].to(self.device),
+                        "attention_mask": batch["attention_mask"].to(self.device),
+                    }
+                    logits, loss = framework.zo_step(batch) # Removed local_seed_pool
+                    progress_bar.update(1)
+                    if (not torch.isnan(loss)) and (
+                        self.args.grad_clip <= 0 or loss != 0.0
+                    ):
+                        loss_total_train += loss
+                        num_trained += len(batch["input_ids"])
+                    if self.args.batch_or_epoch == "epoch":
+                        progress_bar.set_description(
+                            f"client {self.idx} train at epoch {int(cur_step / len(self.train_loader)) + 1}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                        )
+                    else:
+                        progress_bar.set_description(
+                            f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                        )
 
         # Move optimizer state to CPU
         for name in self.optimizer_state:
-            if "exp_avg" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
-                    "exp_avg"
-                ].cpu()
-            if "exp_avg_sq" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
-                    "exp_avg_sq"
-                ].cpu()
+            for key, value in self.optimizer_state[name].items():
+                if isinstance(value, torch.Tensor):
+                    self.optimizer_state[name][key] = value.cpu()
 
         if memory_record_dic is not None:
             memory_record_dic[self.device.index] = {}
@@ -252,14 +300,9 @@ class Client(object):
 
         # Move optimizer state to CPU
         for name in self.optimizer_state:
-            if "exp_avg" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
-                    "exp_avg"
-                ].cpu()
-            if "exp_avg_sq" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
-                    "exp_avg_sq"
-                ].cpu()
+            for key, value in self.optimizer_state[name].items():
+                if isinstance(value, torch.Tensor):
+                    self.optimizer_state[name][key] = value.cpu()
         self.model.cpu()
         if num_eval == 0:
             return float("inf")
@@ -314,14 +357,9 @@ class Client(object):
         progress_bar.close()
         # Move optimizer state to CPU
         for name in self.optimizer_state:
-            if "exp_avg" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg"] = self.optimizer_state[name][
-                    "exp_avg"
-                ].cpu()
-            if "exp_avg_sq" in self.optimizer_state[name]:
-                self.optimizer_state[name]["exp_avg_sq"] = self.optimizer_state[name][
-                    "exp_avg_sq"
-                ].cpu()
+            for key, value in self.optimizer_state[name].items():
+                if isinstance(value, torch.Tensor):
+                    self.optimizer_state[name][key] = value.cpu()
 
         self.model.cpu()
         return acc_total_eval / num_eval

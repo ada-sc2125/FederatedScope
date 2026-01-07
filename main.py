@@ -157,8 +157,8 @@ if __name__ == "__main__":
         "--mezo_optimizer",
         type=str,
         default="sgd",
-        choices=["sgd", "adam", "muon"],
-        help="Which MeZO optimizer to use.",
+        choices=["sgd", "adam", "muon", "demuon"],
+        help="Which optimizer to use.",
     )
     parser.add_argument(
         "--adam_beta1", type=float, default=0.9, help="beta1 for MeZO-Adam"
@@ -175,6 +175,12 @@ if __name__ == "__main__":
     parser.add_argument("--mu", type=float, default=0.9, help="mu for MeZO-Muon")
     parser.add_argument(
         "--ns_steps", type=int, default=5, help="Number of Newton-Schulz steps for Muon"
+    )
+    parser.add_argument(
+        "--demuon_theta",
+        type=float,
+        default=0.1,
+        help="EMA factor for DeMuon momentum gradient estimator",
     )
 
     # Training args only for `FedKSeed-Pro`
