@@ -41,6 +41,15 @@ python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset doll
 python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0000003 -K 1024 --num_clients 4 -m 1 --mezo_optimizer sgd --topology star --log
 ```
 
+```shell
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0001 -K 1024 --num_clients 4 -m 1 --mezo_optimizer gt
+_nsgdm --gt_beta 0.9 --gt_eps 1e-12 --topology star --log
+```
+
+```shell
+python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0005 -K 1024 --num_clients 4 -m 1 --mezo_optimizer demuon --demuon_theta 0.1 --ns_steps 2 --topology star --log
+```
+
 ## Data Preparation
 1. Natural Instructions
 To run experiments on [Natural Instructions](https://github.com/allenai/natural-instructions), you need to unzip the downloaded dataset in directory `./data`.
