@@ -2,6 +2,7 @@ from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
 from optimizers.demuon_optimizer import DeMuonOptimizer
+from optimizers.gt_nsgdm_optimizer import GTNSGDMOptimizer
 from tqdm import tqdm
 import torch
 from aggregator import FedAvgAggregator
@@ -107,13 +108,20 @@ class Client(object):
                     lr=lr,
                     state=self.optimizer_state,
                 )
+            elif self.args.mezo_optimizer == "gt_nsgdm":
+                framework = GTNSGDMOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=lr,
+                    state=self.optimizer_state,
+                )
             else:  # 'sgd'
                 framework = MeZOFramework(
                     self.model,
                     args=self.args,
                     lr=lr,
                 )
-        if self.args.mezo_optimizer == "demuon":
+        if self.args.mezo_optimizer in ["demuon", "gt_nsgdm"]:
             self.model.train()
             if self.args.batch_or_epoch == "batch":
                 loss_total_train = 0.0

@@ -26,6 +26,8 @@ import torch
 import numpy as np
 import math
 
+ZO_RANDOM_SEED = 12345
+
 
 class MeZOAdamOptimizer(object):
     def __init__(self, model, args, lr, state=None): # Removed candidate_seeds
@@ -44,6 +46,7 @@ class MeZOAdamOptimizer(object):
         # Adam-specific states
         self.betas = (args.adam_beta1, args.adam_beta2) if hasattr(args, 'adam_beta1') and hasattr(args, 'adam_beta2') else (0.9, 0.999)
         self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-8
+        self.rng = np.random.RandomState(ZO_RANDOM_SEED)
         
         if state is not None:
             self.state = state
@@ -64,7 +67,7 @@ class MeZOAdamOptimizer(object):
         """
         # Sample the random seed for sampling z
         # self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0] # Changed
-        self.zo_random_seed = np.random.randint(1000000000)
+        self.zo_random_seed = int(self.rng.randint(1000000000))
         
         self._zo_perturb_parameters(scaling_factor=1)
         logits1, loss1 = self.zo_forward(batch)

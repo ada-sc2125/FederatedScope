@@ -157,7 +157,7 @@ if __name__ == "__main__":
         "--mezo_optimizer",
         type=str,
         default="sgd",
-        choices=["sgd", "adam", "muon", "demuon"],
+        choices=["sgd", "adam", "muon", "demuon", "gt_nsgdm"],
         help="Which optimizer to use.",
     )
     parser.add_argument(
@@ -181,6 +181,18 @@ if __name__ == "__main__":
         type=float,
         default=0.1,
         help="EMA factor for DeMuon momentum gradient estimator",
+    )
+    parser.add_argument(
+        "--gt_beta",
+        type=float,
+        default=0.9,
+        help="Momentum factor for GT-NSGDm",
+    )
+    parser.add_argument(
+        "--gt_eps",
+        type=float,
+        default=1e-12,
+        help="Normalization epsilon for GT-NSGDm",
     )
 
     # Training args only for `FedKSeed-Pro`
