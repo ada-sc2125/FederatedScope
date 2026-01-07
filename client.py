@@ -124,6 +124,7 @@ class Client(object):
         if self.args.mezo_optimizer in ["demuon", "gt_nsgdm"]:
             self.model.train()
             if self.args.batch_or_epoch == "batch":
+                print(f"Client {self.idx} starting batch training for {iter_steps} steps")
                 loss_total_train = 0.0
                 num_trained = 0
                 progress_bar = tqdm(
@@ -174,6 +175,10 @@ class Client(object):
                     progress_bar.set_description(
                         f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                     )
+                    if cur_step + 1 == iter_steps:
+                        print(
+                            f"Client {self.idx} finished batch training at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                        )
                 if (
                     self.args.batch_or_epoch == "epoch"
                     and (cur_step + 1) % len(self.train_loader) == 0
@@ -188,6 +193,7 @@ class Client(object):
             self.model.eval()
             with torch.inference_mode():
                 if self.args.batch_or_epoch == "batch":
+                    print(f"Client {self.idx} starting batch training for {iter_steps} steps")
                     loss_total_train = 0.0
                     num_trained = 0
                     progress_bar = tqdm(
@@ -236,6 +242,10 @@ class Client(object):
                         progress_bar.set_description(
                             f"client {self.idx} train at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
                         )
+                        if cur_step + 1 == iter_steps:
+                            print(
+                                f"Client {self.idx} finished batch training at step {cur_step}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
+                            )
                     if (
                         self.args.batch_or_epoch == "epoch"
                         and (cur_step + 1) % len(self.train_loader) == 0
