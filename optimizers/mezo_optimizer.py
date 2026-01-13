@@ -26,8 +26,6 @@ SOFTWARE.
 import torch
 import numpy as np
 
-ZO_RANDOM_SEED = 12345
-
 
 class MeZOFramework(object):
     def __init__(self, model, args, lr): # Removed candidate_seeds
@@ -42,7 +40,7 @@ class MeZOFramework(object):
                 self.named_parameters_to_optim.append((name, param))
         self.zo_eps = self.args.zo_eps
         # self.candidate_seeds = candidate_seeds # Removed
-        self.rng = np.random.RandomState(ZO_RANDOM_SEED)
+        self.rng = np.random.default_rng()
 
     def zo_step(self, batch): # Removed local_seed_pool
         """
@@ -50,7 +48,7 @@ class MeZOFramework(object):
         """
         # Sample the random seed for sampling z
         # self.zo_random_seed = np.random.choice(self.candidate_seeds, 1)[0] # Changed
-        self.zo_random_seed = int(self.rng.randint(1000000000))
+        self.zo_random_seed = int(self.rng.integers(0, 1_000_000_000))
 
         self._zo_perturb_parameters(scaling_factor=1)
         logits1, loss1 = self.zo_forward(batch)
