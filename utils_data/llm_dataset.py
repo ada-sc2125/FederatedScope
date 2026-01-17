@@ -43,7 +43,7 @@ def _extract_gsm8k_answer_value(answer_text):
     try:
         return float(match.group(1))
     except ValueError:
-    return None
+        return None
 
 
 def _gsm8k_answer_category(answer_text):
