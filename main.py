@@ -476,31 +476,32 @@ if __name__ == "__main__":
                 ),
             )
 
-    # --- Final Evaluation on Each Client ---
-    print("\n--- Final Evaluation on Each Client's Model ---")
-    args.eval_metric = previous_metric
-    setup_seed(args.seed)
-    _, eval_loader_final, _ = get_loaders(args, only_eval=True)
+    if args.dataset == "dolly":
+        # --- Final Evaluation on Each Client ---
+        print("\n--- Final Evaluation on Each Client's Model ---")
+        args.eval_metric = previous_metric
+        setup_seed(args.seed)
+        _, eval_loader_final, _ = get_loaders(args, only_eval=True)
 
-    final_eval_results = {}
+        final_eval_results = {}
 
-    # Update all clients with the final eval loader
-    for client in client_list:
-        client.eval_loader = eval_loader_final
+        # Update all clients with the final eval loader
+        for client in client_list:
+            client.eval_loader = eval_loader_final
 
-    for client in tqdm(client_list, desc="Final Evaluation for all clients"):
-        # Eval directly on persistent model
-        eval_result = client.eval(cur_round=args.rounds)
-        torch.cuda.empty_cache()
+        for client in tqdm(client_list, desc="Final Evaluation for all clients"):
+            # Eval directly on persistent model
+            eval_result = client.eval(cur_round=args.rounds)
+            torch.cuda.empty_cache()
 
-        final_eval_results[f"client_{client.idx}"] = eval_result
-        print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
+            final_eval_results[f"client_{client.idx}"] = eval_result
+            print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
 
-    if args.log:
-        with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
-            json.dump(final_eval_results, writer)
+        if args.log:
+            with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
+                json.dump(final_eval_results, writer)
 
-    avg_final_eval = (
-        np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
-    )
-    print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
+        avg_final_eval = (
+            np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
+        )
+        print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
