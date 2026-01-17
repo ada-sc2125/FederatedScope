@@ -85,6 +85,18 @@ python main.py --rounds 40 --bias_sampling  --model datajuicer/LLaMA-1B-dj-refin
 python main.py --rounds 60 --bias_sampling  --model datajuicer/LLaMA-1B-dj-refine-150B --dataset dolly --iid dir0.5 --num_clients 200 --lr 0.0000003 -K 1024 -m 0.05 --log
 ```
 
+## Evaluation Instruction
+
+```shell
+  python evaluate_gsm8k.py \
+    --model /root/autodl-tmp/llama-3.2-1B/ \
+    --checkpoint /path/to/model_state_dict_final_round40.bin \
+    --data_dir data \
+    --split test \
+    --batch_size 4 \
+    --pass_k 5,10
+```
+
 ## License
 This project adopts the Apache-2.0 License. 
 If the implementations and/or our paper were useful to you, please consider citing this [work](https://arxiv.org/abs/2312.06353):

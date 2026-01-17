@@ -464,6 +464,18 @@ if __name__ == "__main__":
             with open(os.path.join(log_dir, "results.json"), "w") as writer:
                 json.dump({"eval_avg_acc": eval_avg_acc}, writer)
 
+    if args.save:
+        os.makedirs(log_dir, exist_ok=True)
+        for client in client_list:
+            state_dict_cpu = {k: v.cpu() for k, v in client.model.state_dict().items()}
+            torch.save(
+                state_dict_cpu,
+                os.path.join(
+                    log_dir,
+                    f"model_state_dict_client{client.idx}_final_round{args.rounds}.bin",
+                ),
+            )
+
     # --- Final Evaluation on Each Client ---
     print("\n--- Final Evaluation on Each Client's Model ---")
     args.eval_metric = previous_metric
