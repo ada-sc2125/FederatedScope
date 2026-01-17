@@ -109,7 +109,7 @@ if __name__ == "__main__":
     # Data
     # Arguments related to data on both datasets
     parser.add_argument(
-        "--dataset", type=str, default="instruct", choices=["instruct", "dolly"]
+        "--dataset", type=str, default="instruct", choices=["instruct", "dolly", "gsm8k"]
     )
     parser.add_argument(
         "--batch_size",
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         "--dataset_subsample",
         type=float,
         default=1.0,
-        help="used for sampling a subset from the original dataset, only effective for dolly-15K",
+        help="used for sampling a subset from the original dataset, only effective for dolly-15K and gsm8k",
     )
 
     # Model

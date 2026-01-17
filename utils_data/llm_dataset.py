@@ -7,6 +7,8 @@ from enum import Enum
 from torch.utils.data import Dataset
 import json
 import os
+import math
+import re
 from dataclasses import dataclass
 import torch
 import transformers
@@ -31,6 +33,85 @@ def load_jsonl(file_path,
                 category=item[category] if category in item else None)
             item = new_item
             list_data_dict.append(item)
+    return list_data_dict
+
+
+def _extract_gsm8k_answer_value(answer_text):
+    match = re.search(r"####\s*([-+]?\d+(?:\.\d+)?)", answer_text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+    return None
+
+
+def _gsm8k_answer_category(answer_text):
+    value = _extract_gsm8k_answer_value(answer_text)
+    if value is None:
+        return 0
+    abs_value = abs(value)
+    if abs_value < 1:
+        digits = 1
+    else:
+        digits = int(math.log10(abs_value)) + 1
+    return min(digits, 6)
+
+
+_GSM8K_QUESTION_CATEGORIES = [
+    ("geometry", ["triangle", "rectangle", "square", "circle", "area", "perimeter", "volume", "radius", "diameter"]),
+    ("time", ["hour", "minute", "second", "day", "week", "month", "year", "time"]),
+    ("money", ["dollar", "$", "cents", "cost", "price", "pay", "paid", "spent", "buy", "sell"]),
+    ("ratio_percent", ["percent", "%", "ratio", "proportion", "rate", "per", "of"]),
+    ("counting", ["each", "total", "how many", "count", "left", "remaining", "remainder"]),
+]
+
+
+def _gsm8k_question_category(question_text):
+    text = question_text.lower()
+    for idx, (_, keywords) in enumerate(_GSM8K_QUESTION_CATEGORIES):
+        for kw in keywords:
+            if kw in text:
+                return idx
+    return len(_GSM8K_QUESTION_CATEGORIES)
+
+
+def load_gsm8k_jsonl(file_path, use_question_category=True):
+    list_data_dict = []
+    with open(file_path, "r") as f:
+        for line in f:
+            item = json.loads(line)
+            question = item.get("question", "")
+            answer = item.get("answer", "")
+            list_data_dict.append(
+                {
+                    "instruction": question,
+                    "input": "",
+                    "output": answer,
+                    "category": _gsm8k_question_category(question)
+                    if use_question_category
+                    else _gsm8k_answer_category(answer),
+                }
+            )
+    return list_data_dict
+
+
+def load_gsm8k_parquet(file_path, use_question_category=True):
+    df = pd.read_parquet(file_path)
+    list_data_dict = []
+    for _, row in df.iterrows():
+        question = row.get("question", "")
+        answer = row.get("answer", "")
+        list_data_dict.append(
+            {
+                "instruction": question,
+                "input": "",
+                "output": answer,
+                "category": _gsm8k_question_category(question)
+                if use_question_category
+                else _gsm8k_answer_category(answer),
+            }
+        )
     return list_data_dict
 
 
@@ -61,7 +142,9 @@ class LLMDataset(Dataset):
                  dataset,
                  tokenizer,
                  prompt_input=PROMPT_DICT["prompt_input"],
-                 prompt_no_input=PROMPT_DICT["prompt_no_input"], generation=False):
+                 prompt_no_input=PROMPT_DICT["prompt_no_input"],
+                 generation=False,
+                 split=None):
         super(LLMDataset, self).__init__()
         if dataset == 'dolly':
             json_name = 'databricks-dolly-15k.jsonl'
@@ -70,6 +153,27 @@ class LLMDataset(Dataset):
                                         input='context',
                                         output='response',
                                         category='category')
+        elif dataset == "gsm8k":
+            split_name = split or "train"
+            candidates = [
+                os.path.join("data", f"{split_name}-00000-of-00001.parquet"),
+                os.path.join("data", "gsm8k", f"{split_name}-00000-of-00001.parquet"),
+                os.path.join("data", "gsm8k", f"{split_name}.jsonl"),
+                os.path.join("data", f"gsm8k_{split_name}.jsonl"),
+                os.path.join("data", f"gsm8k.{split_name}.jsonl"),
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    gsm8k_path = path
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"gsm8k {split_name} split not found, tried: {', '.join(candidates)}"
+                )
+            if gsm8k_path.endswith(".parquet"):
+                list_data_dict = load_gsm8k_parquet(gsm8k_path, use_question_category=True)
+            else:
+                list_data_dict = load_gsm8k_jsonl(gsm8k_path, use_question_category=True)
         sources = [
             prompt_input.format_map(example) if example.get("input", "") != ""
             else prompt_no_input.format_map(example)
