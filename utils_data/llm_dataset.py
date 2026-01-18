@@ -115,6 +115,52 @@ def load_gsm8k_parquet(file_path, use_question_category=True):
     return list_data_dict
 
 
+def _normalize_code_solution(solution):
+    if solution is None:
+        return ""
+    if isinstance(solution, str):
+        return solution
+    if isinstance(solution, list) and solution:
+        if isinstance(solution[0], str):
+            return solution[0]
+        if isinstance(solution[0], dict):
+            return solution[0].get("solution", "") or solution[0].get("code", "")
+    if isinstance(solution, dict):
+        return solution.get("solution", "") or solution.get("code", "")
+    return ""
+
+
+def _code_contests_category(row):
+    if "difficulty" in row and row["difficulty"] is not None:
+        return str(row["difficulty"])
+    if "source" in row and row["source"] is not None:
+        return str(row["source"])
+    desc = row.get("description", "")
+    length = len(desc) if isinstance(desc, str) else 0
+    if length < 400:
+        return "short"
+    if length < 1200:
+        return "medium"
+    return "long"
+
+
+def load_code_contests_parquet(file_path):
+    df = pd.read_parquet(file_path)
+    list_data_dict = []
+    for _, row in df.iterrows():
+        description = row.get("description", "")
+        solution = _normalize_code_solution(row.get("solutions", row.get("solution", "")))
+        list_data_dict.append(
+            {
+                "instruction": description,
+                "input": "",
+                "output": solution,
+                "category": _code_contests_category(row),
+            }
+        )
+    return list_data_dict
+
+
 class DefaultToken(Enum):
     PAD_TOKEN = "[PAD]"
     EOS_TOKEN = "</s>"
@@ -174,6 +220,22 @@ class LLMDataset(Dataset):
                 list_data_dict = load_gsm8k_parquet(gsm8k_path, use_question_category=True)
             else:
                 list_data_dict = load_gsm8k_jsonl(gsm8k_path, use_question_category=True)
+        elif dataset == "code_contests":
+            split_name = split or "train"
+            candidates = [
+                os.path.join("data", "code_contests", f"{split_name}.parquet"),
+                os.path.join("data", "code_contests", f"{split_name}-00000-of-00001.parquet"),
+                os.path.join("data", f"code_contests_{split_name}.parquet"),
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    cc_path = path
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"code_contests {split_name} split not found, tried: {', '.join(candidates)}"
+                )
+            list_data_dict = load_code_contests_parquet(cc_path)
         sources = [
             prompt_input.format_map(example) if example.get("input", "") != ""
             else prompt_no_input.format_map(example)

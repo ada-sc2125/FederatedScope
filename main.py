@@ -109,7 +109,10 @@ if __name__ == "__main__":
     # Data
     # Arguments related to data on both datasets
     parser.add_argument(
-        "--dataset", type=str, default="instruct", choices=["instruct", "dolly", "gsm8k"]
+        "--dataset",
+        type=str,
+        default="instruct",
+        choices=["instruct", "dolly", "gsm8k", "code_contests"],
     )
     parser.add_argument(
         "--batch_size",
