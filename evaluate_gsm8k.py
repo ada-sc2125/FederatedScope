@@ -86,6 +86,8 @@ def main():
         raise ValueError("pass_k must contain at least one integer, e.g. 5,10")
     max_k = max(ks)
 
+    log_path = os.path.splitext(args.checkpoint)[0] + ".txt"
+
     device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
@@ -125,6 +127,8 @@ def main():
     em_correct = 0
     pass_at_k_counts = {k: 0 for k in ks}
 
+    log_file = open(log_path, "w", encoding="utf-8")
+
     total = len(questions)
     for start in tqdm(range(0, total, args.batch_size), desc="Evaluating"):
         batch_questions = questions[start : start + args.batch_size]
@@ -159,11 +163,11 @@ def main():
         for i, gold in enumerate(gold_answers):
             offset = i * max_k
             preds = decoded[offset : offset + max_k]
-            print("INPUT:")
-            print(prompts[i])
+            log_file.write("INPUT:\n")
+            log_file.write(prompts[i] + "\n")
             for j, pred_text in enumerate(preds, start=1):
-                print(f"OUTPUT[{j}]:")
-                print(pred_text)
+                log_file.write(f"OUTPUT[{j}]:\n")
+                log_file.write(pred_text + "\n")
             correct_flags = []
             for pred_text in preds:
                 pred = extract_pred_answer(pred_text)
@@ -183,6 +187,10 @@ def main():
     print(f"Exact Match Accuracy: {em:.4f}")
     for k in ks:
         print(f"Pass@{k}: {pass_at_k[k]:.4f}")
+    log_file.write(f"Exact Match Accuracy: {em:.4f}\n")
+    for k in ks:
+        log_file.write(f"Pass@{k}: {pass_at_k[k]:.4f}\n")
+    log_file.close()
 
 
 if __name__ == "__main__":
