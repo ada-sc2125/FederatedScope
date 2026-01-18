@@ -89,6 +89,7 @@ def main():
     device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=True)
+    tokenizer.padding_side = "left"
     tokenizer.model_max_length = args.max_length
     special_tokens = {}
     if tokenizer.pad_token is None:
@@ -99,7 +100,8 @@ def main():
         special_tokens["bos_token"] = DefaultToken.BOS_TOKEN.value
     if tokenizer.unk_token is None:
         special_tokens["unk_token"] = DefaultToken.UNK_TOKEN.value
-    tokenizer.add_special_tokens(special_tokens)
+    if special_tokens:
+        tokenizer.add_special_tokens(special_tokens)
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model,
@@ -109,6 +111,10 @@ def main():
     )
     state = torch.load(args.checkpoint, map_location="cpu")
     model.load_state_dict(state, strict=True)
+    if special_tokens:
+        model.resize_token_embeddings(len(tokenizer))
+    if model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
     model.to(device)
     model.eval()
 

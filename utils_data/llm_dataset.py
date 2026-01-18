@@ -9,6 +9,7 @@ import json
 import os
 import math
 import re
+import glob
 from dataclasses import dataclass
 import torch
 import transformers
@@ -144,8 +145,11 @@ def _code_contests_category(row):
     return "long"
 
 
-def load_code_contests_parquet(file_path):
-    df = pd.read_parquet(file_path)
+def load_code_contests_parquet(file_paths):
+    if isinstance(file_paths, str):
+        file_paths = [file_paths]
+    dfs = [pd.read_parquet(path) for path in file_paths]
+    df = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
     list_data_dict = []
     for _, row in df.iterrows():
         description = row.get("description", "")
@@ -222,20 +226,32 @@ class LLMDataset(Dataset):
                 list_data_dict = load_gsm8k_jsonl(gsm8k_path, use_question_category=True)
         elif dataset == "code_contests":
             split_name = split or "train"
-            candidates = [
-                os.path.join("data", "code_contests", f"{split_name}.parquet"),
-                os.path.join("data", "code_contests", f"{split_name}-00000-of-00001.parquet"),
-                os.path.join("data", f"code_contests_{split_name}.parquet"),
-            ]
-            for path in candidates:
-                if os.path.exists(path):
-                    cc_path = path
-                    break
+            if split_name == "train":
+                train_glob = os.path.join("data", "code_contests", "train*.parquet")
+                train_paths = sorted(glob.glob(train_glob))
+                if train_paths:
+                    list_data_dict = load_code_contests_parquet(train_paths)
+                else:
+                    raise FileNotFoundError(
+                        f"code_contests train split not found, tried: {train_glob}"
+                    )
             else:
-                raise FileNotFoundError(
-                    f"code_contests {split_name} split not found, tried: {', '.join(candidates)}"
-                )
-            list_data_dict = load_code_contests_parquet(cc_path)
+                candidates = [
+                    os.path.join("data", "code_contests", f"{split_name}.parquet"),
+                    os.path.join(
+                        "data", "code_contests", f"{split_name}-00000-of-00001.parquet"
+                    ),
+                    os.path.join("data", f"code_contests_{split_name}.parquet"),
+                ]
+                for path in candidates:
+                    if os.path.exists(path):
+                        cc_path = path
+                        break
+                else:
+                    raise FileNotFoundError(
+                        f"code_contests {split_name} split not found, tried: {', '.join(candidates)}"
+                    )
+                list_data_dict = load_code_contests_parquet(cc_path)
         sources = [
             prompt_input.format_map(example) if example.get("input", "") != ""
             else prompt_no_input.format_map(example)
