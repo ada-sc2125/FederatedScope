@@ -159,6 +159,11 @@ def main():
         for i, gold in enumerate(gold_answers):
             offset = i * max_k
             preds = decoded[offset : offset + max_k]
+            print("INPUT:")
+            print(prompts[i])
+            for j, pred_text in enumerate(preds, start=1):
+                print(f"OUTPUT[{j}]:")
+                print(pred_text)
             correct_flags = []
             for pred_text in preds:
                 pred = extract_pred_answer(pred_text)
