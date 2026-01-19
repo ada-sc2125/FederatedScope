@@ -527,7 +527,8 @@ if __name__ == "__main__":
             torch.cuda.empty_cache()
 
             final_eval_results[f"client_{client.idx}"] = eval_result
-            print(f"Client {client.idx} final {args.eval_metric}: {eval_result}")
+            metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
+            print(f"Client {client.idx} final {metric_name}: {eval_result}")
 
         if args.log:
             with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
@@ -536,4 +537,5 @@ if __name__ == "__main__":
         avg_final_eval = (
             np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
         )
-        print(f"\nAverage final {args.eval_metric} across all clients: {avg_final_eval}")
+        metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
+        print(f"\nAverage final {metric_name} across all clients: {avg_final_eval}")

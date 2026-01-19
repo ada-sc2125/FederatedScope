@@ -26,10 +26,7 @@ def load_sst2_split(split: str, data_dir: str) -> pd.DataFrame:
 
 
 def build_prompt(sentence: str) -> str:
-    instruction = f"Classify the sentiment of the sentence:\n{sentence}"
-    return PROMPT_DICT["prompt_no_input"].format_map(
-        {"instruction": instruction, "input": ""}
-    )
+    return f"Sentence: {sentence}\nSentiment:"
 
 
 def normalize_label(value: Optional[object]) -> Optional[int]:
@@ -113,11 +110,11 @@ def main():
 
     label_token_ids = {
         0: torch.tensor(
-            [tokenizer.encode("negative", add_special_tokens=False)],
+            [tokenizer.encode(" negative", add_special_tokens=False)],
             device=device,
         ),
         1: torch.tensor(
-            [tokenizer.encode("positive", add_special_tokens=False)],
+            [tokenizer.encode(" positive", add_special_tokens=False)],
             device=device,
         ),
     }

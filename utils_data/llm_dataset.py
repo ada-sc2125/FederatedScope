@@ -178,6 +178,7 @@ def load_sst2_parquet(file_path):
                 "instruction": f"Classify the sentiment of the sentence:\n{sentence}",
                 "input": "",
                 "output": output,
+                "sentence": sentence,
                 "category": label if label is not None else output,
             }
         )
@@ -287,15 +288,25 @@ class LLMDataset(Dataset):
                     f"sst2 {split_name} split not found, tried: {', '.join(candidates)}"
                 )
             list_data_dict = load_sst2_parquet(sst2_path)
-        sources = [
-            prompt_input.format_map(example) if example.get("input", "") != ""
-            else prompt_no_input.format_map(example)
-            for example in list_data_dict
-        ]
-        targets = [
-            f"{example['output']}{tokenizer.eos_token}"
-            for example in list_data_dict
-        ]
+        if dataset == "sst2":
+            sources = [
+                f"Sentence: {example.get('sentence', '')}\nSentiment:"
+                for example in list_data_dict
+            ]
+            targets = [
+                f" {example['output']}{tokenizer.eos_token}"
+                for example in list_data_dict
+            ]
+        else:
+            sources = [
+                prompt_input.format_map(example) if example.get("input", "") != ""
+                else prompt_no_input.format_map(example)
+                for example in list_data_dict
+            ]
+            targets = [
+                f"{example['output']}{tokenizer.eos_token}"
+                for example in list_data_dict
+            ]
 
         data_dict = self.preprocess(sources, targets, tokenizer, generation=generation)
 

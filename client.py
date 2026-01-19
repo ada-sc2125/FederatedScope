@@ -424,11 +424,19 @@ class Client(object):
                     batch_size = input_ids.shape[0]
                     label_token_ids = {
                         0: torch.tensor(
-                            [self.tokenizer.encode("negative", add_special_tokens=False)],
+                            [
+                                self.tokenizer.encode(
+                                    " negative", add_special_tokens=False
+                                )
+                            ],
                             device=self.device,
                         ),
                         1: torch.tensor(
-                            [self.tokenizer.encode("positive", add_special_tokens=False)],
+                            [
+                                self.tokenizer.encode(
+                                    " positive", add_special_tokens=False
+                                )
+                            ],
                             device=self.device,
                         ),
                     }
