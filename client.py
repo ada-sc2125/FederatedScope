@@ -70,6 +70,20 @@ class Client(object):
             return 0
         return None
 
+    def _score_label_tokens(self, prompt_ids, label_ids):
+        concat_ids = torch.cat([prompt_ids, label_ids], dim=1)
+        outputs = self.model(input_ids=concat_ids)
+        logits = outputs.logits
+        prompt_len = prompt_ids.shape[1]
+        label_len = label_ids.shape[1]
+        start = max(prompt_len - 1, 0)
+        end = start + label_len
+        label_logits = logits[0, start:end, :]
+        log_probs = torch.log_softmax(label_logits, dim=-1)
+        token_idx = label_ids[0]
+        token_positions = torch.arange(label_len, device=label_ids.device)
+        return log_probs[token_positions, token_idx].sum().item()
+
     def __getstate__(self):
         state = self.__dict__.copy()
         if "train_iterator" in state:
@@ -405,34 +419,48 @@ class Client(object):
                 # print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
                 # print(self.tokenizer.decode(input_ids[0], skip_special_tokens=True))
 
-                output_ids = self.model.generate(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    max_new_tokens=128,
-                    num_beams=1,
-                )
-                
-                # # Print output
-                # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
-                # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
                 if self.args.dataset == "sst2":
                     batch_categories = batch.get("categories")
                     batch_size = input_ids.shape[0]
+                    label_token_ids = {
+                        0: torch.tensor(
+                            [self.tokenizer.encode("negative", add_special_tokens=False)],
+                            device=self.device,
+                        ),
+                        1: torch.tensor(
+                            [self.tokenizer.encode("positive", add_special_tokens=False)],
+                            device=self.device,
+                        ),
+                    }
                     for i in range(batch_size):
                         prompt_len = int(attention_mask[i].sum().item())
-                        pred_text = self.tokenizer.decode(
-                            output_ids[i][prompt_len:], skip_special_tokens=True
+                        prompt_ids = input_ids[i][:prompt_len].unsqueeze(0)
+                        score_neg = self._score_label_tokens(
+                            prompt_ids, label_token_ids[0]
                         )
-                        pred_label = self._sst2_label_to_int(pred_text)
+                        score_pos = self._score_label_tokens(
+                            prompt_ids, label_token_ids[1]
+                        )
+                        pred_label = 1 if score_pos >= score_neg else 0
                         gold_label = (
                             self._sst2_label_to_int(batch_categories[i])
                             if batch_categories is not None
                             else None
                         )
-                        if pred_label is not None and gold_label is not None:
+                        if gold_label is not None:
                             correct_total_eval += float(pred_label == gold_label)
                 else:
+                    output_ids = self.model.generate(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        max_new_tokens=128,
+                        num_beams=1,
+                    )
+                    
+                    # # Print output
+                    # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
+                    # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
                     acc_total_eval += rouge_score(
                         output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
                     )
