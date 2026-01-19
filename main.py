@@ -4,6 +4,7 @@ import time
 import random
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 import torch.distributed as dist
 import resource
 from tqdm import tqdm
@@ -284,7 +285,7 @@ if __name__ == "__main__":
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
     setup_seed(args.seed)
-    list_train_loader, eval_loader, _ = get_loaders(args)
+    list_train_loader, eval_loader, tokenizer = get_loaders(args)
 
     if args.dataset == "instruct":
         args.iid = "meta"
@@ -479,12 +480,23 @@ if __name__ == "__main__":
                 ),
             )
 
-    if args.dataset == "dolly":
+    if args.dataset in ["dolly", "sst2"]:
         # --- Final Evaluation on Each Client ---
         print("\n--- Final Evaluation on Each Client's Model ---")
         args.eval_metric = previous_metric
         setup_seed(args.seed)
-        _, eval_loader_final, _ = get_loaders(args, only_eval=True)
+        if args.dataset == "sst2":
+            from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+            generation = args.eval_metric != "loss"
+            eval_dataset = LLMDataset(
+                args.dataset, tokenizer=tokenizer, generation=generation, split="test"
+            )
+            data_collator = LLMDataCollator(tokenizer=tokenizer)
+            eval_loader_final = DataLoader(
+                eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
+            )
+        else:
+            _, eval_loader_final, _ = get_loaders(args, only_eval=True)
 
         final_eval_results = {}
 

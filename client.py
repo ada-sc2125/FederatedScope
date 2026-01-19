@@ -40,6 +40,20 @@ class Client(object):
         if self.tokenizer.unk_token is None:
             special_tokens["unk_token"] = DefaultToken.UNK_TOKEN.value
         self.tokenizer.add_special_tokens(special_tokens)
+    
+    def _extract_sst2_label(self, text):
+        if text is None:
+            return None
+        lowered = text.lower()
+        pos_idx = lowered.find("positive")
+        neg_idx = lowered.find("negative")
+        if pos_idx == -1 and neg_idx == -1:
+            return None
+        if pos_idx == -1:
+            return "negative"
+        if neg_idx == -1:
+            return "positive"
+        return "positive" if pos_idx < neg_idx else "negative"
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -357,6 +371,7 @@ class Client(object):
         self.model.eval()
 
         acc_total_eval = 0.0
+        correct_total_eval = 0.0
         num_eval = 0
 
         progress_bar = tqdm(
@@ -385,15 +400,27 @@ class Client(object):
                 # # Print output
                 # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
                 # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
-                acc_total_eval += rouge_score(
-                    output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
-                )
+                if self.args.dataset == "sst2":
+                    pred_text = self.tokenizer.decode(
+                        output_ids[0][len(input_ids[0]) :], skip_special_tokens=True
+                    )
+                    label_text = self.tokenizer.decode(
+                        label_ids[0], skip_special_tokens=True
+                    )
+                    pred_label = self._extract_sst2_label(pred_text)
+                    gold_label = self._extract_sst2_label(label_text)
+                    if pred_label is not None and gold_label is not None:
+                        correct_total_eval += float(pred_label == gold_label)
+                else:
+                    acc_total_eval += rouge_score(
+                        output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
+                    )
                 progress_bar.update(1)
                 num_eval += len(batch["input_ids"])
                 if num_eval == 0:
                     num_eval = 1e-10
                 progress_bar.set_description(
-                    f"Client {self.idx} eval acc: {acc_total_eval / num_eval:.4f}"
+                    f"Client {self.idx} eval acc: {correct_total_eval / num_eval if self.args.dataset == 'sst2' else acc_total_eval / num_eval:.4f}"
                 )
 
         progress_bar.close()
@@ -404,4 +431,6 @@ class Client(object):
                     self.optimizer_state[name][key] = value.cpu()
 
         self.model.cpu()
+        if self.args.dataset == "sst2":
+            return correct_total_eval / num_eval
         return acc_total_eval / num_eval
