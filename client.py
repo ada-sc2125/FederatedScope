@@ -465,6 +465,21 @@ class Client(object):
                         max_new_tokens=128,
                         num_beams=1,
                     )
+                    if self.args.eval_print_io:
+                        batch_size = input_ids.shape[0]
+                        max_to_print = max(self.args.eval_print_n, 0)
+                        for i in range(min(batch_size, max_to_print)):
+                            prompt_len = int(attention_mask[i].sum().item())
+                            prompt_text = self.tokenizer.decode(
+                                input_ids[i][:prompt_len], skip_special_tokens=True
+                            )
+                            output_text = self.tokenizer.decode(
+                                output_ids[i][prompt_len:], skip_special_tokens=True
+                            )
+                            print("INPUT:")
+                            print(prompt_text)
+                            print("OUTPUT:")
+                            print(output_text)
                     
                     # # Print output
                     # print(f"Client {self.idx} Eval Output (Round {cur_round}):")

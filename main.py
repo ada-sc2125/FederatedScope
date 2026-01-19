@@ -272,6 +272,18 @@ if __name__ == "__main__":
         action="store_true",
         help="if `true`, the checkpoint of tuned models will be stored",
     )
+    parser.add_argument(
+        "--eval_print_io",
+        default=False,
+        action="store_true",
+        help="if `true`, print input/output during evaluation",
+    )
+    parser.add_argument(
+        "--eval_print_n",
+        type=int,
+        default=2,
+        help="number of samples to print per evaluation",
+    )
 
     time_stamp = str(time.time())
     args = parser.parse_args()
@@ -330,6 +342,8 @@ if __name__ == "__main__":
         print("--- Round 0 ROUGE evaluation ---")
         prev_metric = args.eval_metric
         args.eval_metric = "rouge"
+        prev_print = args.eval_print_io
+        args.eval_print_io = True
         acc_results = []
         for client in tqdm(client_list, desc="ROUGE Eval (round 0)"):
             prev_loader = client.eval_loader
@@ -337,6 +351,7 @@ if __name__ == "__main__":
             acc_results.append(client.eval(cur_round=0))
             client.eval_loader = prev_loader
             torch.cuda.empty_cache()
+        args.eval_print_io = prev_print
         avg_rouge = np.mean(acc_results) if acc_results else 0.0
         eval_rouge_every5.append({"round": 0, "rouge": avg_rouge})
         print(f"--- Round 0 Average ROUGE: {avg_rouge} ---")
@@ -513,6 +528,8 @@ if __name__ == "__main__":
             print(f"--- Round {r} ROUGE evaluation ---")
             prev_metric = args.eval_metric
             args.eval_metric = "rouge"
+            prev_print = args.eval_print_io
+            args.eval_print_io = True
             acc_results = []
             for client in tqdm(client_list, desc=f"ROUGE Eval (round {r})"):
                 prev_loader = client.eval_loader
@@ -520,6 +537,7 @@ if __name__ == "__main__":
                 acc_results.append(client.eval(cur_round=r))
                 client.eval_loader = prev_loader
                 torch.cuda.empty_cache()
+            args.eval_print_io = prev_print
             avg_rouge = np.mean(acc_results) if acc_results else 0.0
             eval_rouge_every5.append({"round": r, "rouge": avg_rouge})
             print(f"--- Round {r} Average ROUGE: {avg_rouge} ---")
@@ -572,6 +590,8 @@ if __name__ == "__main__":
         for client in client_list:
             client.eval_loader = eval_loader_final
 
+        prev_print = args.eval_print_io
+        args.eval_print_io = True
         for client in tqdm(client_list, desc="Final Evaluation for all clients"):
             # Eval directly on persistent model
             eval_result = client.eval(cur_round=args.rounds)
@@ -580,6 +600,7 @@ if __name__ == "__main__":
             final_eval_results[f"client_{client.idx}"] = eval_result
             metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
             print(f"Client {client.idx} final {metric_name}: {eval_result}")
+        args.eval_print_io = prev_print
 
         if args.log:
             with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
