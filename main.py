@@ -277,6 +277,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     eval_avg_acc = []
+    eval_acc_every5 = []
     memory_record_dic = {}
 
     previous_metric = args.eval_metric
@@ -462,11 +463,27 @@ if __name__ == "__main__":
             f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---"
         )
 
+        if args.dataset == "sst2" and r % 5 == 0:
+            print(f"--- Round {r} SST2 accuracy evaluation ---")
+            prev_metric = args.eval_metric
+            args.eval_metric = "rouge"
+            acc_results = []
+            for client in tqdm(client_list, desc=f"Accuracy Eval (round {r})"):
+                acc_results.append(client.eval(cur_round=r))
+                torch.cuda.empty_cache()
+            avg_acc = np.mean(acc_results) if acc_results else 0.0
+            eval_acc_every5.append({"round": r, "accuracy": avg_acc})
+            print(f"--- Round {r} SST2 Average Accuracy: {avg_acc} ---")
+            args.eval_metric = prev_metric
+
         if args.log:
             with open(os.path.join(log_dir, "memory.json"), "w") as writer:
                 json.dump(memory_record_dic, writer)
             with open(os.path.join(log_dir, "results.json"), "w") as writer:
-                json.dump({"eval_avg_acc": eval_avg_acc}, writer)
+                payload = {"eval_avg_acc": eval_avg_acc}
+                if eval_acc_every5:
+                    payload["eval_acc_every5"] = eval_acc_every5
+                json.dump(payload, writer)
 
     if args.save:
         os.makedirs(log_dir, exist_ok=True)
