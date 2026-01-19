@@ -14,6 +14,7 @@ from utils_data.llm_dataset import PROMPT_DICT
 def load_sst2_split(split: str, data_dir: str) -> pd.DataFrame:
     candidates = [
         os.path.join(data_dir, "sst2", f"{split}-00000-of-00001.parquet"),
+        os.path.join(data_dir, f"{split}-00000-of-00001.parquet"),
         os.path.join(data_dir, f"sst2_{split}.parquet"),
     ]
     for path in candidates:
@@ -35,10 +36,12 @@ def normalize_label(value: Optional[object]) -> Optional[int]:
     if value is None:
         return None
     if isinstance(value, (int, float)):
-        return int(value)
+        value_int = int(value)
+        return value_int if value_int in (0, 1) else None
     text = str(value).strip().lower()
     if text.isdigit():
-        return int(text)
+        value_int = int(text)
+        return value_int if value_int in (0, 1) else None
     if "positive" in text:
         return 1
     if "negative" in text:
@@ -121,6 +124,7 @@ def main():
 
     total = len(sentences)
     correct = 0
+    valid_labels = 0
     for start in tqdm(range(0, total, args.batch_size), desc="Evaluating"):
         batch_sentences = sentences[start : start + args.batch_size]
         batch_labels = labels[start : start + args.batch_size]
@@ -145,10 +149,13 @@ def main():
 
                 if gold_label is not None:
                     correct += int(pred_label == gold_label)
+                    valid_labels += 1
 
-    if total > 0 and any(label is not None for label in labels):
-        acc = correct / total
+    if valid_labels > 0:
+        acc = correct / valid_labels
         print(f"Accuracy: {acc:.4f}")
+    else:
+        print("Accuracy: N/A (no gold labels in this split)")
 
 
 if __name__ == "__main__":
