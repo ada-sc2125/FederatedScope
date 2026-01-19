@@ -64,7 +64,7 @@ def score_label_tokens(model, prompt_ids, label_ids):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--data_dir", type=str, default="data")
     parser.add_argument("--split", type=str, default="test", choices=["train", "test", "validation"])
     parser.add_argument("--batch_size", type=int, default=1)
@@ -95,8 +95,9 @@ def main():
         torch_dtype=torch.float16,
         trust_remote_code=True,
     )
-    state = torch.load(args.checkpoint, map_location="cpu")
-    model.load_state_dict(state, strict=True)
+    if args.checkpoint:
+        state = torch.load(args.checkpoint, map_location="cpu")
+        model.load_state_dict(state, strict=True)
     if special_tokens:
         model.resize_token_embeddings(len(tokenizer))
     if model.config.pad_token_id is None:
