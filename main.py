@@ -284,6 +284,12 @@ if __name__ == "__main__":
         default=2,
         help="number of samples to print per evaluation",
     )
+    parser.add_argument(
+        "--eval_rouge_limit",
+        type=int,
+        default=50,
+        help="number of samples to evaluate for ROUGE each time",
+    )
 
     time_stamp = str(time.time())
     args = parser.parse_args()
@@ -372,7 +378,19 @@ if __name__ == "__main__":
         acc_results = []
         client = client_list[0]
         prev_loader = client.eval_loader
-        client.eval_loader = rouge_eval_loader
+        if args.eval_rouge_limit > 0:
+            rouge_subset = torch.utils.data.Subset(
+                rouge_eval_loader.dataset,
+                list(range(min(args.eval_rouge_limit, len(rouge_eval_loader.dataset)))),
+            )
+            rouge_eval_subset_loader = DataLoader(
+                rouge_subset,
+                batch_size=rouge_eval_loader.batch_size,
+                collate_fn=rouge_eval_loader.collate_fn,
+            )
+            client.eval_loader = rouge_eval_subset_loader
+        else:
+            client.eval_loader = rouge_eval_loader
         acc_results.append(client.eval(cur_round=0))
         client.eval_loader = prev_loader
         torch.cuda.empty_cache()
@@ -533,7 +551,26 @@ if __name__ == "__main__":
             acc_results = []
             for client in tqdm(client_list, desc=f"ROUGE Eval (round {r})"):
                 prev_loader = client.eval_loader
-                client.eval_loader = rouge_eval_loader
+                if args.eval_rouge_limit > 0:
+                    rouge_subset = torch.utils.data.Subset(
+                        rouge_eval_loader.dataset,
+                        list(
+                            range(
+                                min(
+                                    args.eval_rouge_limit,
+                                    len(rouge_eval_loader.dataset),
+                                )
+                            )
+                        ),
+                    )
+                    rouge_eval_subset_loader = DataLoader(
+                        rouge_subset,
+                        batch_size=rouge_eval_loader.batch_size,
+                        collate_fn=rouge_eval_loader.collate_fn,
+                    )
+                    client.eval_loader = rouge_eval_subset_loader
+                else:
+                    client.eval_loader = rouge_eval_loader
                 acc_results.append(client.eval(cur_round=r))
                 client.eval_loader = prev_loader
                 torch.cuda.empty_cache()

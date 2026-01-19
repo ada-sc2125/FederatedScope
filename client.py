@@ -402,6 +402,7 @@ class Client(object):
         acc_total_eval = 0.0
         correct_total_eval = 0.0
         num_eval = 0
+        printed = 0
 
         progress_bar = tqdm(
             total=len(self.eval_loader),
@@ -468,7 +469,9 @@ class Client(object):
                     if self.args.eval_print_io:
                         batch_size = input_ids.shape[0]
                         max_to_print = max(self.args.eval_print_n, 0)
-                        for i in range(min(batch_size, max_to_print)):
+                        remaining = max_to_print - printed
+                        if remaining > 0:
+                            for i in range(min(batch_size, remaining)):
                             prompt_len = int(attention_mask[i].sum().item())
                             prompt_text = self.tokenizer.decode(
                                 input_ids[i][:prompt_len], skip_special_tokens=True
@@ -480,6 +483,7 @@ class Client(object):
                             print(prompt_text)
                             print("OUTPUT:")
                             print(output_text)
+                            printed += 1
                     
                     # # Print output
                     # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
