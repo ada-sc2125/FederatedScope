@@ -489,7 +489,7 @@ if __name__ == "__main__":
             from utils_data.llm_dataset import LLMDataset, LLMDataCollator
             generation = args.eval_metric != "loss"
             eval_dataset = LLMDataset(
-                args.dataset, tokenizer=tokenizer, generation=generation, split="test"
+                args.dataset, tokenizer=tokenizer, generation=generation, split="validation"
             )
             data_collator = LLMDataCollator(tokenizer=tokenizer)
             eval_loader_final = DataLoader(
