@@ -55,6 +55,21 @@ class Client(object):
             return "positive"
         return "positive" if pos_idx < neg_idx else "negative"
 
+    def _sst2_label_to_int(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return int(value)
+        text = str(value).strip().lower()
+        if text.isdigit():
+            return int(text)
+        label = self._extract_sst2_label(text)
+        if label == "positive":
+            return 1
+        if label == "negative":
+            return 0
+        return None
+
     def __getstate__(self):
         state = self.__dict__.copy()
         if "train_iterator" in state:
@@ -384,6 +399,7 @@ class Client(object):
             for batch in self.eval_loader:
                 input_ids = batch["input_ids"].to(self.device)
                 label_ids = batch["labels"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
                 
                 # # Print input
                 # print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
@@ -391,7 +407,7 @@ class Client(object):
 
                 output_ids = self.model.generate(
                     input_ids=input_ids,
-                    attention_mask=batch["attention_mask"].to(self.device),
+                    attention_mask=attention_mask,
                     pad_token_id=self.tokenizer.pad_token_id,
                     max_new_tokens=128,
                     num_beams=1,
@@ -401,16 +417,21 @@ class Client(object):
                 # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
                 # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
                 if self.args.dataset == "sst2":
-                    pred_text = self.tokenizer.decode(
-                        output_ids[0][len(input_ids[0]) :], skip_special_tokens=True
-                    )
-                    label_text = self.tokenizer.decode(
-                        label_ids[0], skip_special_tokens=True
-                    )
-                    pred_label = self._extract_sst2_label(pred_text)
-                    gold_label = self._extract_sst2_label(label_text)
-                    if pred_label is not None and gold_label is not None:
-                        correct_total_eval += float(pred_label == gold_label)
+                    batch_categories = batch.get("categories")
+                    batch_size = input_ids.shape[0]
+                    for i in range(batch_size):
+                        prompt_len = int(attention_mask[i].sum().item())
+                        pred_text = self.tokenizer.decode(
+                            output_ids[i][prompt_len:], skip_special_tokens=True
+                        )
+                        pred_label = self._sst2_label_to_int(pred_text)
+                        gold_label = (
+                            self._sst2_label_to_int(batch_categories[i])
+                            if batch_categories is not None
+                            else None
+                        )
+                        if pred_label is not None and gold_label is not None:
+                            correct_total_eval += float(pred_label == gold_label)
                 else:
                     acc_total_eval += rouge_score(
                         output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
