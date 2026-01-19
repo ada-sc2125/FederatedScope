@@ -278,15 +278,21 @@ if __name__ == "__main__":
 
     eval_avg_acc = []
     eval_acc_every5 = []
+    eval_rouge_every5 = []
     memory_record_dic = {}
 
     previous_metric = args.eval_metric
-    args.eval_metric = "loss"
     # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
     setup_seed(args.seed)
     list_train_loader, eval_loader, tokenizer = get_loaders(args)
+    rouge_eval_loader = None
+    if args.dataset == "dolly":
+        prev_metric = args.eval_metric
+        args.eval_metric = "rouge"
+        _, rouge_eval_loader, _ = get_loaders(args, only_eval=True)
+        args.eval_metric = prev_metric
 
     if args.dataset == "instruct":
         args.iid = "meta"
@@ -319,6 +325,22 @@ if __name__ == "__main__":
         client_list.append(
             Client(idx, args, list_train_loader[idx], eval_loader)
         )
+
+    if args.dataset == "dolly" and rouge_eval_loader is not None:
+        print("--- Round 0 ROUGE evaluation ---")
+        prev_metric = args.eval_metric
+        args.eval_metric = "rouge"
+        acc_results = []
+        for client in tqdm(client_list, desc="ROUGE Eval (round 0)"):
+            prev_loader = client.eval_loader
+            client.eval_loader = rouge_eval_loader
+            acc_results.append(client.eval(cur_round=0))
+            client.eval_loader = prev_loader
+            torch.cuda.empty_cache()
+        avg_rouge = np.mean(acc_results) if acc_results else 0.0
+        eval_rouge_every5.append({"round": 0, "rouge": avg_rouge})
+        print(f"--- Round 0 Average ROUGE: {avg_rouge} ---")
+        args.eval_metric = prev_metric
 
     # --- Create network topology ---
     print(f"Creating '{args.topology}' topology...")
@@ -487,6 +509,22 @@ if __name__ == "__main__":
             print(f"--- Round {r} SST2 Average Accuracy: {avg_acc} ---")
             args.eval_metric = prev_metric
 
+        if args.dataset == "dolly" and r % 5 == 0 and rouge_eval_loader is not None:
+            print(f"--- Round {r} ROUGE evaluation ---")
+            prev_metric = args.eval_metric
+            args.eval_metric = "rouge"
+            acc_results = []
+            for client in tqdm(client_list, desc=f"ROUGE Eval (round {r})"):
+                prev_loader = client.eval_loader
+                client.eval_loader = rouge_eval_loader
+                acc_results.append(client.eval(cur_round=r))
+                client.eval_loader = prev_loader
+                torch.cuda.empty_cache()
+            avg_rouge = np.mean(acc_results) if acc_results else 0.0
+            eval_rouge_every5.append({"round": r, "rouge": avg_rouge})
+            print(f"--- Round {r} Average ROUGE: {avg_rouge} ---")
+            args.eval_metric = prev_metric
+
         if args.log:
             with open(os.path.join(log_dir, "memory.json"), "w") as writer:
                 json.dump(memory_record_dic, writer)
@@ -494,6 +532,8 @@ if __name__ == "__main__":
                 payload = {"eval_avg_acc": eval_avg_acc}
                 if eval_acc_every5:
                     payload["eval_acc_every5"] = eval_acc_every5
+                if eval_rouge_every5:
+                    payload["eval_rouge_every5"] = eval_rouge_every5
                 json.dump(payload, writer)
 
     if args.save:
