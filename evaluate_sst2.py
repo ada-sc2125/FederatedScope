@@ -15,7 +15,6 @@ def load_sst2_split(split: str, data_dir: str) -> pd.DataFrame:
     candidates = [
         os.path.join(data_dir, "sst2", f"{split}-00000-of-00001.parquet"),
         os.path.join(data_dir, f"sst2_{split}.parquet"),
-        os.path.join(os.sep, "data", "sst2", f"{split}-00000-of-00001.parquet"),
     ]
     for path in candidates:
         if os.path.exists(path):
