@@ -468,8 +468,19 @@ if __name__ == "__main__":
             prev_metric = args.eval_metric
             args.eval_metric = "rouge"
             acc_results = []
+            from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+            acc_eval_dataset = LLMDataset(
+                args.dataset, tokenizer=tokenizer, generation=True, split="validation"
+            )
+            acc_data_collator = LLMDataCollator(tokenizer=tokenizer)
+            acc_eval_loader = DataLoader(
+                acc_eval_dataset, batch_size=args.batch_size, collate_fn=acc_data_collator
+            )
             for client in tqdm(client_list, desc=f"Accuracy Eval (round {r})"):
+                prev_loader = client.eval_loader
+                client.eval_loader = acc_eval_loader
                 acc_results.append(client.eval(cur_round=r))
+                client.eval_loader = prev_loader
                 torch.cuda.empty_cache()
             avg_acc = np.mean(acc_results) if acc_results else 0.0
             eval_acc_every5.append({"round": r, "accuracy": avg_acc})
