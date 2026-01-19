@@ -112,7 +112,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="instruct",
-        choices=["instruct", "dolly", "gsm8k", "code_contests"],
+        choices=["instruct", "dolly", "gsm8k", "code_contests", "sst2"],
     )
     parser.add_argument(
         "--batch_size",
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         "--dataset_subsample",
         type=float,
         default=1.0,
-        help="used for sampling a subset from the original dataset, only effective for dolly-15K and gsm8k",
+        help="used for sampling a subset from the original dataset, only effective for dolly-15K, gsm8k, and sst2",
     )
 
     # Model

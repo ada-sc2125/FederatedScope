@@ -165,6 +165,25 @@ def load_code_contests_parquet(file_paths):
     return list_data_dict
 
 
+def load_sst2_parquet(file_path):
+    df = pd.read_parquet(file_path)
+    label_to_text = {0: "negative", 1: "positive"}
+    list_data_dict = []
+    for _, row in df.iterrows():
+        sentence = row.get("sentence", row.get("text", "")) or ""
+        label = row.get("label")
+        output = label_to_text.get(label, str(label) if label is not None else "")
+        list_data_dict.append(
+            {
+                "instruction": f"Classify the sentiment of the sentence:\n{sentence}",
+                "input": "",
+                "output": output,
+                "category": label if label is not None else output,
+            }
+        )
+    return list_data_dict
+
+
 class DefaultToken(Enum):
     PAD_TOKEN = "[PAD]"
     EOS_TOKEN = "</s>"
@@ -252,6 +271,22 @@ class LLMDataset(Dataset):
                         f"code_contests {split_name} split not found, tried: {', '.join(candidates)}"
                     )
                 list_data_dict = load_code_contests_parquet(cc_path)
+        elif dataset == "sst2":
+            split_name = split or "train"
+            candidates = [
+                os.path.join("data", "sst2", f"{split_name}-00000-of-00001.parquet"),
+                os.path.join("data", f"sst2_{split_name}.parquet"),
+                os.path.join(os.sep, "data", "sst2", f"{split_name}-00000-of-00001.parquet"),
+            ]
+            for path in candidates:
+                if os.path.exists(path):
+                    sst2_path = path
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"sst2 {split_name} split not found, tried: {', '.join(candidates)}"
+                )
+            list_data_dict = load_sst2_parquet(sst2_path)
         sources = [
             prompt_input.format_map(example) if example.get("input", "") != ""
             else prompt_no_input.format_map(example)

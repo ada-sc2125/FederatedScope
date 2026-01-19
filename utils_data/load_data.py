@@ -168,6 +168,60 @@ def get_loaders(args, only_eval=False):
             eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
         )
 
+    elif args.dataset == "sst2":
+        from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+        generation = args.eval_metric != "loss"
+        train_dataset = LLMDataset(
+            args.dataset, tokenizer=tokenizer, generation=generation, split="train"
+        )
+        try:
+            eval_dataset = LLMDataset(
+                args.dataset, tokenizer=tokenizer, generation=generation, split="validation"
+            )
+        except FileNotFoundError:
+            eval_dataset = LLMDataset(
+                args.dataset, tokenizer=tokenizer, generation=generation, split="test"
+            )
+
+        data_collator = LLMDataCollator(tokenizer=tokenizer)
+
+        if args.dataset_subsample < 1.0:
+            train_dataset, _ = torch.utils.data.dataset.random_split(
+                train_dataset,
+                [
+                    int(len(train_dataset) * args.dataset_subsample),
+                    len(train_dataset) - int(len(train_dataset) * args.dataset_subsample),
+                ],
+            )
+
+        y_train = np.array([item["categories"] for item in train_dataset])
+        counter = Counter(y_train)
+        noniid = args.iid
+        if "dir" in noniid:
+            split_dic = partition_idx_labeldir(
+                y_train,
+                n_parties=args.num_clients,
+                alpha=float(noniid[3:]),
+                num_classes=len(counter),
+            )
+            split_trainsets = []
+            for _, sample_indices in split_dic.items():
+                split_trainsets.append(Subset(train_dataset, indices=sample_indices))
+        else:
+            n_parts = [int(len(train_dataset) / args.num_clients) for _ in range(args.num_clients - 1)]
+            n_parts.append(len(train_dataset) - sum(n_parts))
+            split_trainsets = torch.utils.data.dataset.random_split(train_dataset, n_parts)
+
+        list_train_loader = [
+            DataLoader(
+                subset, shuffle=True, batch_size=args.batch_size, collate_fn=data_collator
+            )
+            for subset in split_trainsets
+        ]
+        eval_loader = DataLoader(
+            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
+        )
+
     elif args.dataset in ['instruct']:
         from utils_data.natural_instruction_loader import get_instruction_dataset
         list_train_loader, eval_loader = get_instruction_dataset(args, tokenizer, only_eval=only_eval)
