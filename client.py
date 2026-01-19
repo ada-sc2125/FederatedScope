@@ -472,18 +472,19 @@ class Client(object):
                         remaining = max_to_print - printed
                         if remaining > 0:
                             for i in range(min(batch_size, remaining)):
-                            prompt_len = int(attention_mask[i].sum().item())
-                            prompt_text = self.tokenizer.decode(
-                                input_ids[i][:prompt_len], skip_special_tokens=True
-                            )
-                            output_text = self.tokenizer.decode(
-                                output_ids[i][prompt_len:], skip_special_tokens=True
-                            )
-                            print("INPUT:")
-                            print(prompt_text)
-                            print("OUTPUT:")
-                            print(output_text)
-                            printed += 1
+                                prompt_len = int(attention_mask[i].sum().item())
+                                prompt_text = self.tokenizer.decode(
+                                    input_ids[i][:prompt_len], skip_special_tokens=True
+                                )
+                                output_text = self.tokenizer.decode(
+                                    output_ids[i][prompt_len:],
+                                    skip_special_tokens=True,
+                                )
+                                print("INPUT:")
+                                print(prompt_text)
+                                print("OUTPUT:")
+                                print(output_text)
+                                printed += 1
                     
                     # # Print output
                     # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
