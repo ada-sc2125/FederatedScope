@@ -112,11 +112,12 @@ def evaluate_loss(
     samples = data[:eval_limit] if eval_limit > 0 else data
 
     total_batches = math.ceil(len(samples) / batch_size) if samples else 0
-    for batch in tqdm(
+    progress = tqdm(
         batch_iter(samples, batch_size),
         total=total_batches,
         desc="Evaluating loss",
-    ):
+    )
+    for batch in progress:
         prompts = [build_prompt(item) for item in batch]
         targets = [
             f"{(item.get('output') or '')}{tokenizer.eos_token}" for item in batch
@@ -153,6 +154,8 @@ def evaluate_loss(
             continue
         loss_total += loss.item() * input_ids.shape[0]
         num_eval += input_ids.shape[0]
+        avg_loss = loss_total / max(num_eval, 1)
+        progress.set_postfix(loss=f"{avg_loss:.4f}")
 
     return loss_total / max(num_eval, 1)
 
@@ -176,11 +179,12 @@ def evaluate_rouge(
     samples = data[:eval_limit] if eval_limit > 0 else data
 
     total_batches = math.ceil(len(samples) / batch_size) if samples else 0
-    for batch in tqdm(
+    progress = tqdm(
         batch_iter(samples, batch_size),
         total=total_batches,
         desc="Evaluating ROUGE",
-    ):
+    )
+    for batch in progress:
         prompts = [build_prompt(item) for item in batch]
         targets = [
             f"{(item.get('output') or '')}{tokenizer.eos_token}" for item in batch
@@ -233,6 +237,8 @@ def evaluate_rouge(
                 output_ids[i][prompt_len:], label_ids[i], tokenizer
             )
             num_eval += 1
+        avg_rouge = rouge_total / max(num_eval, 1)
+        progress.set_postfix(rouge=f"{avg_rouge:.4f}")
 
     return rouge_total / max(num_eval, 1)
 
