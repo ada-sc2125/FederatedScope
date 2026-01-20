@@ -72,6 +72,13 @@ def prepare_tokenizer(model_name: str, max_length: int, padding_side: str):
     return tokenizer, special_tokens
 
 
+def _infer_vocab_size_from_state(state):
+    for key in ("model.embed_tokens.weight", "model.model.embed_tokens.weight", "embed_tokens.weight"):
+        if key in state:
+            return state[key].shape[0]
+    return None
+
+
 def load_model(model_name: str, checkpoint: str, tokenizer, special_tokens, device):
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
@@ -81,9 +88,13 @@ def load_model(model_name: str, checkpoint: str, tokenizer, special_tokens, devi
     )
     if checkpoint:
         state = torch.load(checkpoint, map_location="cpu")
+        vocab_size = _infer_vocab_size_from_state(state)
+        if vocab_size is not None and vocab_size != model.get_input_embeddings().num_embeddings:
+            model.resize_token_embeddings(vocab_size)
         model.load_state_dict(state, strict=True)
     if special_tokens:
-        model.resize_token_embeddings(len(tokenizer))
+        if model.get_input_embeddings().num_embeddings != len(tokenizer):
+            model.resize_token_embeddings(len(tokenizer))
     if model.config.pad_token_id is None:
         model.config.pad_token_id = tokenizer.pad_token_id
     model.to(device)
