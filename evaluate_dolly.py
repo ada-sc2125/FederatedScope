@@ -3,7 +3,6 @@ import math
 import os
 from typing import Dict, List
 
-import pandas as pd
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer

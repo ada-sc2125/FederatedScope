@@ -344,6 +344,9 @@ if __name__ == "__main__":
     # Load base model (template)
     print("Loading base model...")
     base_model = get_model(args)
+    base_model.resize_token_embeddings(len(tokenizer))
+    if base_model.config.pad_token_id is None:
+        base_model.config.pad_token_id = tokenizer.pad_token_id
 
     for idx in range(args.num_clients):
         client_list.append(
