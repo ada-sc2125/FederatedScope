@@ -60,13 +60,13 @@ def get_loaders(args, only_eval=False):
             DataLoader(
                 subset,
                 shuffle=True,
-                batch_size=args.train_batch_size,
+                batch_size=args.batch_size,
                 collate_fn=data_collator,
             )
             for subset in split_trainsets
         ]
         eval_loader = DataLoader(
-            eval_set, batch_size=args.eval_batch_size, collate_fn=data_collator
+            eval_set, batch_size=args.batch_size, collate_fn=data_collator
         )
 
     elif args.dataset == "gsm8k":
@@ -112,13 +112,13 @@ def get_loaders(args, only_eval=False):
             DataLoader(
                 subset,
                 shuffle=True,
-                batch_size=args.train_batch_size,
+                batch_size=args.batch_size,
                 collate_fn=data_collator,
             )
             for subset in split_trainsets
         ]
         eval_loader = DataLoader(
-            eval_dataset, batch_size=args.eval_batch_size, collate_fn=data_collator
+            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
         )
 
     elif args.dataset == "code_contests":
@@ -169,13 +169,13 @@ def get_loaders(args, only_eval=False):
             DataLoader(
                 subset,
                 shuffle=True,
-                batch_size=args.train_batch_size,
+                batch_size=args.batch_size,
                 collate_fn=data_collator,
             )
             for subset in split_trainsets
         ]
         eval_loader = DataLoader(
-            eval_dataset, batch_size=args.eval_batch_size, collate_fn=data_collator
+            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
         )
 
     elif args.dataset == "sst2":
@@ -226,13 +226,13 @@ def get_loaders(args, only_eval=False):
             DataLoader(
                 subset,
                 shuffle=True,
-                batch_size=args.train_batch_size,
+                batch_size=args.batch_size,
                 collate_fn=data_collator,
             )
             for subset in split_trainsets
         ]
         eval_loader = DataLoader(
-            eval_dataset, batch_size=args.eval_batch_size, collate_fn=data_collator
+            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
         )
 
     elif args.dataset in ['instruct']:

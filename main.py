@@ -116,16 +116,10 @@ if __name__ == "__main__":
         choices=["instruct", "dolly", "gsm8k", "code_contests", "sst2"],
     )
     parser.add_argument(
-        "--train_batch_size",
+        "--batch_size",
         type=int,
         default=1,
         help="batch size > 1 may cause error during running",
-    )
-    parser.add_argument(
-        "--eval_batch_size",
-        type=int,
-        default=8,
-        help="evaluation batch size",
     )
     parser.add_argument(
         "--max_length",
@@ -507,7 +501,7 @@ if __name__ == "__main__":
             )
             acc_data_collator = LLMDataCollator(tokenizer=tokenizer)
             acc_eval_loader = DataLoader(
-            acc_eval_dataset, batch_size=args.eval_batch_size, collate_fn=acc_data_collator
+            acc_eval_dataset, batch_size=args.batch_size, collate_fn=acc_data_collator
             )
             for client in tqdm(client_list, desc=f"Accuracy Eval (round {r})"):
                 prev_loader = client.eval_loader
@@ -594,7 +588,7 @@ if __name__ == "__main__":
             )
             data_collator = LLMDataCollator(tokenizer=tokenizer)
             eval_loader_final = DataLoader(
-            eval_dataset, batch_size=args.eval_batch_size, collate_fn=data_collator
+            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
             )
         else:
             _, eval_loader_final, _ = get_loaders(args, only_eval=True)

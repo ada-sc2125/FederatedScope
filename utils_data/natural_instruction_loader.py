@@ -151,7 +151,7 @@ def get_instruction_dataset(args, tokenizer, only_eval=False):
                     DataLoader(
                         dataset,
                         shuffle=True,
-                        batch_size=args.train_batch_size,
+                        batch_size=args.batch_size,
                         collate_fn=data_collator,
                     )
                 )
@@ -178,7 +178,7 @@ def get_instruction_dataset(args, tokenizer, only_eval=False):
     eval_loader = DataLoader(
         universal_eval_set,
         shuffle=False,
-        batch_size=args.eval_batch_size,
+        batch_size=args.batch_size,
         collate_fn=data_collator,
     )
     return list_train_loader, eval_loader
