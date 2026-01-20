@@ -369,37 +369,6 @@ if __name__ == "__main__":
         client.model = deepcopy(base_model)
     print("Client models initialized.")
 
-    if args.dataset == "dolly" and rouge_eval_loader is not None:
-        print("--- Round 0 ROUGE evaluation ---")
-        prev_metric = args.eval_metric
-        args.eval_metric = "rouge"
-        prev_print = args.eval_print_io
-        args.eval_print_io = True
-        acc_results = []
-        client = client_list[0]
-        prev_loader = client.eval_loader
-        if args.eval_rouge_limit > 0:
-            rouge_subset = torch.utils.data.Subset(
-                rouge_eval_loader.dataset,
-                list(range(min(args.eval_rouge_limit, len(rouge_eval_loader.dataset)))),
-            )
-            rouge_eval_subset_loader = DataLoader(
-                rouge_subset,
-                batch_size=rouge_eval_loader.batch_size,
-                collate_fn=rouge_eval_loader.collate_fn,
-            )
-            client.eval_loader = rouge_eval_subset_loader
-        else:
-            client.eval_loader = rouge_eval_loader
-        acc_results.append(client.eval(cur_round=0))
-        client.eval_loader = prev_loader
-        torch.cuda.empty_cache()
-        args.eval_print_io = prev_print
-        avg_rouge = np.mean(acc_results) if acc_results else 0.0
-        eval_rouge_every5.append({"round": 0, "rouge": avg_rouge})
-        print(f"--- Round 0 Average ROUGE: {avg_rouge} ---")
-        args.eval_metric = prev_metric
-
     # Initial evaluation (evaluating the initial model using the first client as a runner)
     print("Performing initial evaluation...")
     eval_result = client_list[0].eval(cur_round=0)
