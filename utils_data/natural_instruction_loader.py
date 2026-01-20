@@ -147,7 +147,14 @@ def get_instruction_dataset(args, tokenizer, only_eval=False):
                     # only take the first output into consideration
                     data.append((instruct, item['input'], item['output'][0]))
                 dataset = LLMDataset(data, tokenizer, use_prompts=args.use_prompts)
-                list_train_loader.append(DataLoader(dataset, shuffle=True, batch_size=args.batch_size, collate_fn=data_collator))
+                list_train_loader.append(
+                    DataLoader(
+                        dataset,
+                        shuffle=True,
+                        batch_size=args.train_batch_size,
+                        collate_fn=data_collator,
+                    )
+                )
         args.num_clients = len(list_train_loader)
 
     list_eval_set = []
@@ -168,5 +175,10 @@ def get_instruction_dataset(args, tokenizer, only_eval=False):
             else:
                 list_eval_set.append(LLMDataset(data, tokenizer, use_prompts=args.use_prompts, generation=True))
     universal_eval_set = ConcatDataset(list_eval_set)
-    eval_loader = DataLoader(universal_eval_set, shuffle=False, batch_size=args.batch_size, collate_fn=data_collator)
+    eval_loader = DataLoader(
+        universal_eval_set,
+        shuffle=False,
+        batch_size=args.eval_batch_size,
+        collate_fn=data_collator,
+    )
     return list_train_loader, eval_loader
