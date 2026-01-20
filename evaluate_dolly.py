@@ -3,6 +3,7 @@ import math
 import os
 from typing import Dict, List
 
+import pandas as pd
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -30,6 +31,28 @@ def load_dolly_data(data_dir: str) -> List[Dict[str, str]]:
     raise FileNotFoundError(
         f"dolly jsonl not found, tried: {', '.join(candidates)}"
     )
+
+
+def select_eval_data(
+    data: List[Dict[str, str]],
+    zerotask: int,
+    dataset_subsample: float,
+    seed: int,
+) -> List[Dict[str, str]]:
+    if dataset_subsample < 1.0:
+        generator = torch.Generator()
+        generator.manual_seed(seed)
+        keep_n = int(len(data) * dataset_subsample)
+        keep_idx = torch.randperm(len(data), generator=generator)[:keep_n].tolist()
+        keep_idx.sort()
+        data = [data[i] for i in keep_idx]
+
+    categories = [item.get("category") for item in data]
+    category_codes = list(pd.Categorical(categories).codes)
+    eval_data = [
+        item for item, code in zip(data, category_codes) if code == zerotask
+    ]
+    return eval_data
 
 
 def build_prompt(example: Dict[str, str]) -> str:
@@ -225,6 +248,9 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--eval_limit", type=int, default=0)
+    parser.add_argument("--zerotask", type=int, default=7)
+    parser.add_argument("--dataset_subsample", type=float, default=1.0)
+    parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_print_io", action="store_true")
     parser.add_argument("--eval_print_n", type=int, default=2)
     args = parser.parse_args()
@@ -237,6 +263,12 @@ def main():
     model = load_model(args.model, args.checkpoint, tokenizer, special_tokens, device)
 
     data = load_dolly_data(args.data_dir)
+    data = select_eval_data(
+        data,
+        zerotask=args.zerotask,
+        dataset_subsample=args.dataset_subsample,
+        seed=args.seed,
+    )
     if args.checkpoint:
         log_dir = os.path.dirname(os.path.abspath(args.checkpoint))
     else:
