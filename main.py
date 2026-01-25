@@ -350,9 +350,7 @@ if __name__ == "__main__":
         base_model.config.pad_token_id = tokenizer.pad_token_id
 
     for idx in range(args.num_clients):
-        client_list.append(
-            Client(idx, args, list_train_loader[idx], eval_loader)
-        )
+        client_list.append(Client(idx, args, list_train_loader[idx], eval_loader))
 
     # --- Create network topology ---
     print(f"Creating '{args.topology}' topology...")
@@ -378,6 +376,7 @@ if __name__ == "__main__":
     for client in client_list:
         client.model = deepcopy(base_model)
     print("Client models initialized.")
+    base_model = None  # Free memory
 
     # Initial evaluation (evaluating the initial model using the first client as a runner)
     print("Performing initial evaluation...")
@@ -478,9 +477,7 @@ if __name__ == "__main__":
 
             # Load aggregated state into client for evaluation and next round
             # We use None for model arg because client.model is persistent
-            client.load_model_and_optimizer(
-                None, agg_model_state, agg_opt_state
-            )
+            client.load_model_and_optimizer(None, agg_model_state, agg_opt_state)
 
             # Evaluation
             eval_result = client.eval(cur_round=r)
@@ -505,12 +502,15 @@ if __name__ == "__main__":
             args.eval_metric = "rouge"
             acc_results = []
             from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+
             acc_eval_dataset = LLMDataset(
                 args.dataset, tokenizer=tokenizer, generation=True, split="validation"
             )
             acc_data_collator = LLMDataCollator(tokenizer=tokenizer)
             acc_eval_loader = DataLoader(
-            acc_eval_dataset, batch_size=args.batch_size, collate_fn=acc_data_collator
+                acc_eval_dataset,
+                batch_size=args.batch_size,
+                collate_fn=acc_data_collator,
             )
             for client in tqdm(client_list, desc=f"Accuracy Eval (round {r})"):
                 prev_loader = client.eval_loader
@@ -591,13 +591,17 @@ if __name__ == "__main__":
         setup_seed(args.seed)
         if args.dataset == "sst2":
             from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+
             generation = args.eval_metric != "loss"
             eval_dataset = LLMDataset(
-                args.dataset, tokenizer=tokenizer, generation=generation, split="validation"
+                args.dataset,
+                tokenizer=tokenizer,
+                generation=generation,
+                split="validation",
             )
             data_collator = LLMDataCollator(tokenizer=tokenizer)
             eval_loader_final = DataLoader(
-            eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
+                eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
             )
         else:
             _, eval_loader_final, _ = get_loaders(args, only_eval=True)
@@ -621,7 +625,9 @@ if __name__ == "__main__":
         args.eval_print_io = prev_print
 
         if args.log:
-            with open(os.path.join(log_dir, "final_eval_all_clients.json"), "w") as writer:
+            with open(
+                os.path.join(log_dir, "final_eval_all_clients.json"), "w"
+            ) as writer:
                 json.dump(final_eval_results, writer)
 
         avg_final_eval = (
