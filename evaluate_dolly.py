@@ -3,6 +3,7 @@ import math
 import os
 from typing import Dict, List
 
+import pandas as pd
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -34,6 +35,7 @@ def load_dolly_data(data_dir: str) -> List[Dict[str, str]]:
 
 def select_eval_data(
     data: List[Dict[str, str]],
+    zerotask: int,
     dataset_subsample: float,
     seed: int,
 ) -> List[Dict[str, str]]:
@@ -45,7 +47,9 @@ def select_eval_data(
         keep_idx.sort()
         data = [data[i] for i in keep_idx]
 
-    return data
+    categories = [item.get("category") for item in data]
+    category_codes = list(pd.Categorical(categories).codes)
+    return [item for item, code in zip(data, category_codes) if code == zerotask]
 
 
 def build_prompt(example: Dict[str, str]) -> str:
@@ -258,6 +262,7 @@ def main():
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--eval_limit", type=int, default=0)
+    parser.add_argument("--zerotask", type=int, default=7)
     parser.add_argument("--dataset_subsample", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_print_io", action="store_true")
@@ -274,6 +279,7 @@ def main():
     data = load_dolly_data(args.data_dir)
     data = select_eval_data(
         data,
+        zerotask=args.zerotask,
         dataset_subsample=args.dataset_subsample,
         seed=args.seed,
     )
