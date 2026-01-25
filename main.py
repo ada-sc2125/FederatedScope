@@ -290,6 +290,13 @@ if __name__ == "__main__":
         default=50,
         help="number of samples to evaluate for ROUGE each time",
     )
+    parser.add_argument(
+        "--agg_device",
+        type=str,
+        default="cpu",
+        choices=["cpu", "cuda"],
+        help="device for aggregating model/optimizer states",
+    )
 
     time_stamp = str(time.time())
     args = parser.parse_args()
@@ -447,13 +454,15 @@ if __name__ == "__main__":
             ]
 
             # Aggregate on GPU with streaming to limit peak memory
-            agg_model_state_gpu = aggregate_state_dicts_streaming(
-                neighbor_model_states, device=device
+            agg_device = device if args.agg_device == "cuda" else "cpu"
+            agg_model_state = aggregate_state_dicts_streaming(
+                neighbor_model_states, device=agg_device
             )
-            agg_opt_state_gpu = aggregate_optimizer_states_streaming(
-                neighbor_opt_states, device=device
+            agg_opt_state = aggregate_optimizer_states_streaming(
+                neighbor_opt_states, device=agg_device
             )
-            log_memory(f"post-aggregation client {client.idx}", device)
+            if args.agg_device == "cuda":
+                log_memory(f"post-aggregation client {client.idx}", device)
 
             # # Move back to CPU for storage and client loading
             # agg_model_state_cpu = {k: v.cpu() for k, v in agg_model_state_gpu.items()}
@@ -470,7 +479,7 @@ if __name__ == "__main__":
             # Load aggregated state into client for evaluation and next round
             # We use None for model arg because client.model is persistent
             client.load_model_and_optimizer(
-                None, agg_model_state_gpu, agg_opt_state_gpu
+                None, agg_model_state, agg_opt_state
             )
 
             # Evaluation
