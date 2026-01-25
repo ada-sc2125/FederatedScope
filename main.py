@@ -293,7 +293,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--agg_device",
         type=str,
-        default="cpu",
+        default="cuda",
         choices=["cpu", "cuda"],
         help="device for aggregating model/optimizer states",
     )
@@ -462,18 +462,6 @@ if __name__ == "__main__":
             )
             if args.agg_device == "cuda":
                 log_memory(f"post-aggregation client {client.idx}", device)
-
-            # # Move back to CPU for storage and client loading
-            # agg_model_state_cpu = {k: v.cpu() for k, v in agg_model_state_gpu.items()}
-
-            # agg_opt_state_cpu = {}
-            # for k, v in agg_opt_state_gpu.items():
-            #     agg_opt_state_cpu[k] = {}
-            #     for sub_k, sub_v in v.items():
-            #         if isinstance(sub_v, torch.Tensor):
-            #             agg_opt_state_cpu[k][sub_k] = sub_v.cpu()
-            #         else:
-            #             agg_opt_state_cpu[k][sub_k] = sub_v
 
             # Load aggregated state into client for evaluation and next round
             # We use None for model arg because client.model is persistent
