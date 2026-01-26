@@ -307,6 +307,8 @@ if __name__ == "__main__":
     memory_record_dic = {}
 
     previous_metric = args.eval_metric
+    # Training-time evaluation is always loss for all datasets.
+    args.eval_metric = "loss"
     # set CUDA visibility to targeted cuda device, to avoid the several hundred MB memory consumption of device 0
     # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
@@ -575,7 +577,10 @@ if __name__ == "__main__":
     if args.dataset in ["dolly", "sst2"]:
         # --- Final Evaluation on Each Client ---
         print("\n--- Final Evaluation on Each Client's Model ---")
-        args.eval_metric = previous_metric
+        if args.dataset == "dolly":
+            args.eval_metric = "rouge"
+        else:
+            args.eval_metric = previous_metric
         setup_seed(args.seed)
         if args.dataset == "sst2":
             from utils_data.llm_dataset import LLMDataset, LLMDataCollator
