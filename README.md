@@ -30,24 +30,23 @@ In the future, we will merge this branch into the [llm](https://github.com/aliba
 Please see `requirements.txt`.
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --muon_lr 0.0005 --mezo_optimizer muon --ns_steps 2 --topology star --log
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --muon_lr 0.0005 --mezo_optimizer muon --ns_steps 5 --topology star --log --eval_metric loss --save
 ```
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --mezo_optimizer adam --topology star --log
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.00002 -K 1024 --num_clients 4 -m 1 --mezo_optimizer adam --topology star --log --eval_metric loss --save
 ```
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0000003 -K 1024 --num_clients 4 -m 1 --mezo_optimizer sgd --topology star --log
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0000003 -K 1024 --num_clients 4 -m 1 --mezo_optimizer sgd --topology star --log --eval_metric loss --save
 ```
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0001 -K 1024 --num_clients 4 -m 1 --mezo_optimizer gt
-_nsgdm --gt_beta 0.9 --gt_eps 1e-12 --topology star --log
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0001 -K 1024 --num_clients 4 -m 1 --mezo_optimizer gt_nsgdm --gt_beta 0.9 --gt_eps 1e-12 --topology star --log --eval_metric loss --save
 ```
 
 ```shell
-python main.py --rounds 40 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0005 -K 1024 --num_clients 4 -m 1 --mezo_optimizer demuon --demuon_theta 0.1 --ns_steps 2 --topology star --log
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0005 -K 1024 --num_clients 4 -m 1 --mezo_optimizer demuon --demuon_theta 0.1 --ns_steps 2 --topology star --log --eval_metric loss --save
 ```
 
 ## Data Preparation
