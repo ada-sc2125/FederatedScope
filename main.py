@@ -303,7 +303,7 @@ if __name__ == "__main__":
 
     eval_avg_acc = []
     eval_acc_every5 = []
-    eval_rouge_every5 = []
+    eval_rouge_every20 = []
     memory_record_dic = {}
 
     previous_metric = args.eval_metric
@@ -486,15 +486,20 @@ if __name__ == "__main__":
             f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---"
         )
 
-        if args.dataset == "sst2" and r % 5 == 0:
+        if args.dataset == "sst2" and r % 20 == 0:
             print(f"--- Round {r} SST2 accuracy evaluation ---")
             prev_metric = args.eval_metric
-            args.eval_metric = "rouge"
+            args.eval_metric = previous_metric
             acc_results = []
+            acc_results_by_client = {}
             from utils_data.llm_dataset import LLMDataset, LLMDataCollator
 
+            generation = args.eval_metric != "loss"
             acc_eval_dataset = LLMDataset(
-                args.dataset, tokenizer=tokenizer, generation=True, split="validation"
+                args.dataset,
+                tokenizer=tokenizer,
+                generation=generation,
+                split="validation",
             )
             acc_data_collator = LLMDataCollator(tokenizer=tokenizer)
             acc_eval_loader = DataLoader(
@@ -505,49 +510,37 @@ if __name__ == "__main__":
             for client in tqdm(client_list, desc=f"Accuracy Eval (round {r})"):
                 prev_loader = client.eval_loader
                 client.eval_loader = acc_eval_loader
-                acc_results.append(client.eval(cur_round=r))
+                eval_result = client.eval(cur_round=r)
+                acc_results.append(eval_result)
+                acc_results_by_client[f"client_{client.idx}"] = eval_result
                 client.eval_loader = prev_loader
                 torch.cuda.empty_cache()
             avg_acc = np.mean(acc_results) if acc_results else 0.0
-            eval_acc_every5.append({"round": r, "accuracy": avg_acc})
+            eval_acc_every5.append(
+                {"round": r, "accuracy": acc_results_by_client}
+            )
             print(f"--- Round {r} SST2 Average Accuracy: {avg_acc} ---")
             args.eval_metric = prev_metric
 
-        if args.dataset == "dolly" and r % 5 == 0 and rouge_eval_loader is not None:
+        if args.dataset == "dolly" and r % 20 == 0 and rouge_eval_loader is not None:
             print(f"--- Round {r} ROUGE evaluation ---")
             prev_metric = args.eval_metric
             args.eval_metric = "rouge"
             prev_print = args.eval_print_io
             args.eval_print_io = True
             acc_results = []
+            acc_results_by_client = {}
             for client in tqdm(client_list, desc=f"ROUGE Eval (round {r})"):
                 prev_loader = client.eval_loader
-                if args.eval_rouge_limit > 0:
-                    rouge_subset = torch.utils.data.Subset(
-                        rouge_eval_loader.dataset,
-                        list(
-                            range(
-                                min(
-                                    args.eval_rouge_limit,
-                                    len(rouge_eval_loader.dataset),
-                                )
-                            )
-                        ),
-                    )
-                    rouge_eval_subset_loader = DataLoader(
-                        rouge_subset,
-                        batch_size=rouge_eval_loader.batch_size,
-                        collate_fn=rouge_eval_loader.collate_fn,
-                    )
-                    client.eval_loader = rouge_eval_subset_loader
-                else:
-                    client.eval_loader = rouge_eval_loader
-                acc_results.append(client.eval(cur_round=r))
+                client.eval_loader = rouge_eval_loader
+                eval_result = client.eval(cur_round=r)
+                acc_results.append(eval_result)
+                acc_results_by_client[f"client_{client.idx}"] = eval_result
                 client.eval_loader = prev_loader
                 torch.cuda.empty_cache()
             args.eval_print_io = prev_print
             avg_rouge = np.mean(acc_results) if acc_results else 0.0
-            eval_rouge_every5.append({"round": r, "rouge": avg_rouge})
+            eval_rouge_every20.append({"round": r, "rouge": acc_results_by_client})
             print(f"--- Round {r} Average ROUGE: {avg_rouge} ---")
             args.eval_metric = prev_metric
 
@@ -558,8 +551,8 @@ if __name__ == "__main__":
                 payload = {"eval_avg_acc": eval_avg_acc}
                 if eval_acc_every5:
                     payload["eval_acc_every5"] = eval_acc_every5
-                if eval_rouge_every5:
-                    payload["eval_rouge_every5"] = eval_rouge_every5
+                if eval_rouge_every20:
+                    payload["eval_rouge_every20"] = eval_rouge_every20
                 json.dump(payload, writer)
 
     if args.save:
@@ -574,57 +567,57 @@ if __name__ == "__main__":
                 ),
             )
 
-    if args.dataset in ["dolly", "sst2"]:
-        # --- Final Evaluation on Each Client ---
-        print("\n--- Final Evaluation on Each Client's Model ---")
-        if args.dataset == "dolly":
-            args.eval_metric = "rouge"
-        else:
-            args.eval_metric = previous_metric
-        setup_seed(args.seed)
-        if args.dataset == "sst2":
-            from utils_data.llm_dataset import LLMDataset, LLMDataCollator
-
-            generation = args.eval_metric != "loss"
-            eval_dataset = LLMDataset(
-                args.dataset,
-                tokenizer=tokenizer,
-                generation=generation,
-                split="validation",
-            )
-            data_collator = LLMDataCollator(tokenizer=tokenizer)
-            eval_loader_final = DataLoader(
-                eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
-            )
-        else:
-            _, eval_loader_final, _ = get_loaders(args, only_eval=True)
-
-        final_eval_results = {}
-
-        # Update all clients with the final eval loader
-        for client in client_list:
-            client.eval_loader = eval_loader_final
-
-        prev_print = args.eval_print_io
-        args.eval_print_io = True
-        for client in tqdm(client_list, desc="Final Evaluation for all clients"):
-            # Eval directly on persistent model
-            eval_result = client.eval(cur_round=args.rounds)
-            torch.cuda.empty_cache()
-
-            final_eval_results[f"client_{client.idx}"] = eval_result
-            metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
-            print(f"Client {client.idx} final {metric_name}: {eval_result}")
-        args.eval_print_io = prev_print
-
-        if args.log:
-            with open(
-                os.path.join(log_dir, "final_eval_all_clients.json"), "w"
-            ) as writer:
-                json.dump(final_eval_results, writer)
-
-        avg_final_eval = (
-            np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
-        )
-        metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
-        print(f"\nAverage final {metric_name} across all clients: {avg_final_eval}")
+    # if args.dataset in ["dolly", "sst2"]:
+    #     # --- Final Evaluation on Each Client ---
+    #     print("\n--- Final Evaluation on Each Client's Model ---")
+    #     if args.dataset == "dolly":
+    #         args.eval_metric = "rouge"
+    #     else:
+    #         args.eval_metric = previous_metric
+    #     setup_seed(args.seed)
+    #     if args.dataset == "sst2":
+    #         from utils_data.llm_dataset import LLMDataset, LLMDataCollator
+    #
+    #         generation = args.eval_metric != "loss"
+    #         eval_dataset = LLMDataset(
+    #             args.dataset,
+    #             tokenizer=tokenizer,
+    #             generation=generation,
+    #             split="validation",
+    #         )
+    #         data_collator = LLMDataCollator(tokenizer=tokenizer)
+    #         eval_loader_final = DataLoader(
+    #             eval_dataset, batch_size=args.batch_size, collate_fn=data_collator
+    #         )
+    #     else:
+    #         _, eval_loader_final, _ = get_loaders(args, only_eval=True)
+    #
+    #     final_eval_results = {}
+    #
+    #     # Update all clients with the final eval loader
+    #     for client in client_list:
+    #         client.eval_loader = eval_loader_final
+    #
+    #     prev_print = args.eval_print_io
+    #     args.eval_print_io = True
+    #     for client in tqdm(client_list, desc="Final Evaluation for all clients"):
+    #         # Eval directly on persistent model
+    #         eval_result = client.eval(cur_round=args.rounds)
+    #         torch.cuda.empty_cache()
+    #
+    #         final_eval_results[f"client_{client.idx}"] = eval_result
+    #         metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
+    #         print(f"Client {client.idx} final {metric_name}: {eval_result}")
+    #     args.eval_print_io = prev_print
+    #
+    #     if args.log:
+    #         with open(
+    #             os.path.join(log_dir, "final_eval_all_clients.json"), "w"
+    #         ) as writer:
+    #             json.dump(final_eval_results, writer)
+    #
+    #     avg_final_eval = (
+    #         np.mean(list(final_eval_results.values())) if final_eval_results else 0.0
+    #     )
+    #     metric_name = "accuracy" if args.dataset == "sst2" else args.eval_metric
+    #     print(f"\nAverage final {metric_name} across all clients: {avg_final_eval}")
