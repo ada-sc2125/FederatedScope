@@ -469,6 +469,12 @@ if __name__ == "__main__":
             # We use None for model arg because client.model is persistent
             client.load_model_and_optimizer(None, agg_model_state, agg_opt_state)
 
+        do_round_loss_eval = not (
+            args.dataset == "dolly"
+            and r % 20 == 0
+            and rouge_eval_loader is not None
+        )
+        if do_round_loss_eval:
             # Evaluation
             eval_result = client.eval(cur_round=r)
             round_eval_metrics.append(eval_result)
@@ -479,12 +485,15 @@ if __name__ == "__main__":
             # del agg_model_state_gpu
             # del agg_opt_state_gpu
 
-        # Average metric across all clients
-        avg_metric = np.mean(round_eval_metrics) if round_eval_metrics else float("inf")
-        eval_avg_acc.append(avg_metric)
-        print(
-            f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---"
-        )
+        if do_round_loss_eval:
+            # Average metric across all clients
+            avg_metric = (
+                np.mean(round_eval_metrics) if round_eval_metrics else float("inf")
+            )
+            eval_avg_acc.append(avg_metric)
+            print(
+                f"--- Round {r} evaluation finished. Average {args.eval_metric}: {avg_metric} ---"
+            )
 
         if args.dataset == "sst2" and r % 20 == 0:
             print(f"--- Round {r} SST2 accuracy evaluation ---")
