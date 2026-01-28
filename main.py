@@ -183,7 +183,7 @@ if __name__ == "__main__":
         "--mezo_optimizer",
         type=str,
         default="sgd",
-        choices=["sgd", "adam", "muon", "demuon", "gt_nsgdm"],
+        choices=["sgd", "adam", "muon", "demuon", "mezo_demuon", "gt_nsgdm"],
         help="Which optimizer to use.",
     )
     parser.add_argument(

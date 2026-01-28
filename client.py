@@ -2,6 +2,7 @@ from optimizers.mezo_optimizer import MeZOFramework
 from optimizers.mezo_adam_optimizer import MeZOAdamOptimizer
 from optimizers.mezo_muon_optimizer import MeZOMuonOptimizer
 from optimizers.demuon_optimizer import DeMuonOptimizer
+from optimizers.mezo_demuon_optimizer import MeZODEMuonOptimizer
 from optimizers.gt_nsgdm_optimizer import GTNSGDMOptimizer
 from tqdm import tqdm
 import torch
@@ -146,6 +147,13 @@ class Client(object):
                 )
             elif self.args.mezo_optimizer == "demuon":
                 framework = DeMuonOptimizer(
+                    self.model,
+                    args=self.args,
+                    lr=lr,
+                    state=self.optimizer_state,
+                )
+            elif self.args.mezo_optimizer == "mezo_demuon":
+                framework = MeZODEMuonOptimizer(
                     self.model,
                     args=self.args,
                     lr=lr,

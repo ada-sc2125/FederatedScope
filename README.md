@@ -46,7 +46,7 @@ python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset doll
 ```
 
 ```shell
-python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0005 -K 1024 --num_clients 4 -m 1 --mezo_optimizer demuon --demuon_theta 0.1 --ns_steps 2 --topology star --log --eval_metric loss --save
+python main.py --rounds 60 --model /root/autodl-tmp/llama-3.2-1B/ --dataset dolly --lr 0.0005 -K 1024 --num_clients 4 -m 1 --mezo_optimizer mezo_demuon --demuon_theta 0.1 --ns_steps 2 --topology star --log --eval_metric loss --save
 ```
 
 ## Data Preparation
