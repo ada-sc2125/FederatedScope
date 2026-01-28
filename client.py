@@ -122,6 +122,15 @@ class Client(object):
             iter_steps = self.args.local_step * len(self.train_loader)
         else:
             iter_steps = self.args.local_step
+        train_batch_size = getattr(self.train_loader, "batch_size", None) or 1
+
+        def _loader_total_samples(loader):
+            if hasattr(loader, "dataset") and loader.dataset is not None:
+                try:
+                    return len(loader.dataset)
+                except TypeError:
+                    pass
+            return len(loader) * train_batch_size
 
         if self.args.bias_sampling:
             assert probabilities is not None
@@ -179,7 +188,7 @@ class Client(object):
                 loss_total_train = 0.0
                 num_trained = 0
                 progress_bar = tqdm(
-                    range(iter_steps),
+                    total=iter_steps * train_batch_size,
                     leave=True,
                     desc=f"Client {self.idx} Train",
                 )
@@ -194,7 +203,7 @@ class Client(object):
                         loss_total_train = 0.0
                         num_trained = 0
                         progress_bar = tqdm(
-                            range(len(self.train_loader)),
+                            total=_loader_total_samples(self.train_loader),
                             leave=True,
                             desc=f"Client {self.idx} Train",
                         )
@@ -208,6 +217,7 @@ class Client(object):
                     "labels": batch["labels"].to(self.device),
                     "attention_mask": batch["attention_mask"].to(self.device),
                 }
+                batch_size = batch["input_ids"].shape[0]
                 outputs = self.model(**batch)
                 loss = outputs.loss
                 if torch.isnan(loss):
@@ -215,7 +225,7 @@ class Client(object):
                 loss.backward()
                 framework.step()
                 framework.zero_grad()
-                progress_bar.update(1)
+                progress_bar.update(batch_size)
                 token_count = (batch["labels"] != -100).sum().item()
                 loss_total_train += loss.detach() * token_count
                 num_trained += token_count
@@ -249,7 +259,7 @@ class Client(object):
                     loss_total_train = 0.0
                     num_trained = 0
                     progress_bar = tqdm(
-                        range(iter_steps),
+                        total=iter_steps * train_batch_size,
                         leave=True,
                         desc=f"Client {self.idx} Train",
                     )
@@ -265,7 +275,7 @@ class Client(object):
                             loss_total_train = 0.0
                             num_trained = 0
                             progress_bar = tqdm(
-                                range(len(self.train_loader)),
+                                total=_loader_total_samples(self.train_loader),
                                 leave=True,
                                 desc=f"Client {self.idx} Train",
                             )
@@ -279,8 +289,9 @@ class Client(object):
                         "labels": batch["labels"].to(self.device),
                         "attention_mask": batch["attention_mask"].to(self.device),
                     }
+                    batch_size = batch["input_ids"].shape[0]
                     logits, loss = framework.zo_step(batch) # Removed local_seed_pool
-                    progress_bar.update(1)
+                    progress_bar.update(batch_size)
                     if (not torch.isnan(loss)) and (
                         self.args.grad_clip <= 0 or loss != 0.0
                     ):
@@ -358,8 +369,13 @@ class Client(object):
         loss_total_eval = 0.0
         num_eval = 0
 
+        total_steps = (
+            len(self.eval_loader.dataset)
+            if hasattr(self.eval_loader, "dataset") and self.eval_loader.dataset is not None
+            else len(self.eval_loader)
+        )
         progress_bar = tqdm(
-            total=len(self.eval_loader),
+            total=total_steps,
             leave=True,
             desc=f"Client {self.idx} Eval Loss",
         )
@@ -382,7 +398,7 @@ class Client(object):
                 }
                 outputs = self.model(**batch_on_device)
                 loss = outputs.loss
-                progress_bar.update(1)
+                progress_bar.update(input_ids.shape[0])
                 if torch.isnan(loss):
                     continue
                 token_count = (batch["labels"] != -100).sum().item()
@@ -415,8 +431,13 @@ class Client(object):
         num_eval = 0
         printed = 0
 
+        total_steps = (
+            len(self.eval_loader.dataset)
+            if hasattr(self.eval_loader, "dataset") and self.eval_loader.dataset is not None
+            else len(self.eval_loader)
+        )
         progress_bar = tqdm(
-            total=len(self.eval_loader),
+            total=total_steps,
             leave=True,
             desc=f"Client {self.idx} Eval ROUGE",
         )
@@ -426,6 +447,7 @@ class Client(object):
                 input_ids = batch["input_ids"].to(self.device)
                 label_ids = batch["labels"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
+                batch_size = input_ids.shape[0]
                 
                 # # Print input
                 # print(f"\nClient {self.idx} Eval Input (Round {cur_round}):")
@@ -433,7 +455,6 @@ class Client(object):
 
                 if self.args.dataset == "sst2":
                     batch_categories = batch.get("categories")
-                    batch_size = input_ids.shape[0]
                     label_token_ids = {
                         0: torch.tensor(
                             [
@@ -469,6 +490,8 @@ class Client(object):
                         )
                         if gold_label is not None:
                             correct_total_eval += float(pred_label == gold_label)
+                            num_eval += 1
+                        progress_bar.update(1)
                 else:
                     output_ids = self.model.generate(
                         input_ids=input_ids,
@@ -478,7 +501,6 @@ class Client(object):
                         num_beams=1,
                     )
                     if self.args.eval_print_io:
-                        batch_size = input_ids.shape[0]
                         max_to_print = max(self.args.eval_print_n, 0)
                         remaining = max_to_print - printed
                         if remaining > 0:
@@ -500,11 +522,14 @@ class Client(object):
                     # # Print output
                     # print(f"Client {self.idx} Eval Output (Round {cur_round}):")
                     # print(self.tokenizer.decode(output_ids[0], skip_special_tokens=True))
-                    acc_total_eval += rouge_score(
-                        output_ids[0][len(input_ids[0]) :], label_ids[0], self.tokenizer
-                    )
-                progress_bar.update(1)
-                num_eval += len(batch["input_ids"])
+                    for i in range(batch_size):
+                        acc_total_eval += rouge_score(
+                            output_ids[i][len(input_ids[i]) :],
+                            label_ids[i],
+                            self.tokenizer,
+                        )
+                        num_eval += 1
+                        progress_bar.update(1)
                 if num_eval == 0:
                     num_eval = 1e-10
                 progress_bar.set_description(
