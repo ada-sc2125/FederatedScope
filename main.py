@@ -291,6 +291,19 @@ if __name__ == "__main__":
         help="number of samples to evaluate for ROUGE each time",
     )
     parser.add_argument(
+        "--eval_rouge_round",
+        dest="eval_rouge_round",
+        action="store_true",
+        help="if set, run ROUGE evaluation every 20 rounds for dolly",
+    )
+    parser.add_argument(
+        "--no_eval_rouge_round",
+        dest="eval_rouge_round",
+        action="store_false",
+        help="if set, disable ROUGE evaluation every 20 rounds for dolly",
+    )
+    parser.set_defaults(eval_rouge_round=True)
+    parser.add_argument(
         "--agg_device",
         type=str,
         default="cuda",
@@ -315,7 +328,7 @@ if __name__ == "__main__":
     setup_seed(args.seed)
     list_train_loader, eval_loader, tokenizer = get_loaders(args)
     rouge_eval_loader = None
-    if args.dataset == "dolly":
+    if args.dataset == "dolly" and args.eval_rouge_round:
         prev_metric = args.eval_metric
         args.eval_metric = "rouge"
         _, rouge_eval_loader, _ = get_loaders(args, only_eval=True)
