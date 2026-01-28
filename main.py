@@ -483,7 +483,10 @@ if __name__ == "__main__":
             client.load_model_and_optimizer(None, agg_model_state, agg_opt_state)
 
         do_round_loss_eval = not (
-            args.dataset == "dolly" and r % 20 == 0 and rouge_eval_loader is not None
+            args.dataset == "dolly"
+            and args.eval_rouge_round
+            and r % 20 == 0
+            and rouge_eval_loader is not None
         )
         if do_round_loss_eval:
             # Evaluation across all clients
@@ -541,7 +544,12 @@ if __name__ == "__main__":
             print(f"--- Round {r} SST2 Average Accuracy: {avg_acc} ---")
             args.eval_metric = prev_metric
 
-        if args.dataset == "dolly" and r % 20 == 0 and rouge_eval_loader is not None:
+        if (
+            args.dataset == "dolly"
+            and args.eval_rouge_round
+            and r % 20 == 0
+            and rouge_eval_loader is not None
+        ):
             print(f"--- Round {r} ROUGE evaluation ---")
             prev_metric = args.eval_metric
             args.eval_metric = "rouge"
