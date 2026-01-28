@@ -470,20 +470,14 @@ if __name__ == "__main__":
             client.load_model_and_optimizer(None, agg_model_state, agg_opt_state)
 
         do_round_loss_eval = not (
-            args.dataset == "dolly"
-            and r % 20 == 0
-            and rouge_eval_loader is not None
+            args.dataset == "dolly" and r % 20 == 0 and rouge_eval_loader is not None
         )
         if do_round_loss_eval:
-            # Evaluation
-            eval_result = client.eval(cur_round=r)
-            round_eval_metrics.append(eval_result)
-
-            torch.cuda.empty_cache()
-
-            # # Explicitly free GPU tensors from aggregation
-            # del agg_model_state_gpu
-            # del agg_opt_state_gpu
+            # Evaluation across all clients
+            for client in client_list:
+                eval_result = client.eval(cur_round=r)
+                round_eval_metrics.append(eval_result)
+                torch.cuda.empty_cache()
 
         if do_round_loss_eval:
             # Average metric across all clients
@@ -525,9 +519,7 @@ if __name__ == "__main__":
                 client.eval_loader = prev_loader
                 torch.cuda.empty_cache()
             avg_acc = np.mean(acc_results) if acc_results else 0.0
-            eval_acc_every5.append(
-                {"round": r, "accuracy": acc_results_by_client}
-            )
+            eval_acc_every5.append({"round": r, "accuracy": acc_results_by_client})
             print(f"--- Round {r} SST2 Average Accuracy: {avg_acc} ---")
             args.eval_metric = prev_metric
 
