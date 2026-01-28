@@ -216,8 +216,9 @@ class Client(object):
                 framework.step()
                 framework.zero_grad()
                 progress_bar.update(1)
-                loss_total_train += loss.detach()
-                num_trained += len(batch["input_ids"])
+                token_count = (batch["labels"] != -100).sum().item()
+                loss_total_train += loss.detach() * token_count
+                num_trained += token_count
                 if self.args.batch_or_epoch == "epoch":
                     progress_bar.set_description(
                         f"client {self.idx} train at epoch {int(cur_step / len(self.train_loader)) + 1}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
@@ -283,8 +284,9 @@ class Client(object):
                     if (not torch.isnan(loss)) and (
                         self.args.grad_clip <= 0 or loss != 0.0
                     ):
-                        loss_total_train += loss
-                        num_trained += len(batch["input_ids"])
+                        token_count = (batch["labels"] != -100).sum().item()
+                        loss_total_train += loss * token_count
+                        num_trained += token_count
                     if self.args.batch_or_epoch == "epoch":
                         progress_bar.set_description(
                             f"client {self.idx} train at epoch {int(cur_step / len(self.train_loader)) + 1}, loss: {loss_total_train / num_trained if num_trained != 0 else 0.0}"
@@ -383,8 +385,9 @@ class Client(object):
                 progress_bar.update(1)
                 if torch.isnan(loss):
                     continue
-                loss_total_eval += loss
-                num_eval += len(batch["input_ids"])
+                token_count = (batch["labels"] != -100).sum().item()
+                loss_total_eval += loss * token_count
+                num_eval += token_count
                 if num_eval == 0:
                     num_eval = 1e-10
                 progress_bar.set_description(
