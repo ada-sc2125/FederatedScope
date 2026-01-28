@@ -474,10 +474,15 @@ if __name__ == "__main__":
         )
         if do_round_loss_eval:
             # Evaluation across all clients
-            for client in client_list:
-                eval_result = client.eval(cur_round=r)
+            if args.topology == "full":
+                eval_result = client_list[0].eval(cur_round=r)
                 round_eval_metrics.append(eval_result)
                 torch.cuda.empty_cache()
+            else:
+                for client in client_list:
+                    eval_result = client.eval(cur_round=r)
+                    round_eval_metrics.append(eval_result)
+                    torch.cuda.empty_cache()
 
         if do_round_loss_eval:
             # Average metric across all clients
