@@ -410,6 +410,9 @@ if __name__ == "__main__":
     # Disable parallel workers for now as the logic has changed significantly
     use_parallel_workers = False
 
+    if args.save:
+        os.makedirs(log_dir, exist_ok=True)
+
     for r in range(1, args.rounds + 1):
         print(f"--- Round {r}/{args.rounds} ---")
 
@@ -582,17 +585,18 @@ if __name__ == "__main__":
                     payload["eval_rouge_every20"] = eval_rouge_every20
                 json.dump(payload, writer)
 
-    if args.save:
-        os.makedirs(log_dir, exist_ok=True)
-        for client in client_list:
-            state_dict_cpu = {k: v.cpu() for k, v in client.model.state_dict().items()}
-            torch.save(
-                state_dict_cpu,
-                os.path.join(
-                    log_dir,
-                    f"model_state_dict_client{client.idx}_final_round{args.rounds}.bin",
-                ),
-            )
+        if args.save and r % 20 == 0:
+            for client in client_list:
+                state_dict_cpu = {
+                    k: v.cpu() for k, v in client.model.state_dict().items()
+                }
+                torch.save(
+                    state_dict_cpu,
+                    os.path.join(
+                        log_dir,
+                        f"model_state_dict_client{client.idx}_latest.bin",
+                    ),
+                )
 
     # if args.dataset in ["dolly", "sst2"]:
     #     # --- Final Evaluation on Each Client ---
