@@ -23,6 +23,7 @@ class Client(object):
         self.model = None
         self.aggregator = None
         self.optimizer_state = {}
+        self.subspace_bases = None
 
         self.device = torch.device(f"cuda:{args.device}")
         # self.candidate_seeds = candidate_seeds # Removed
@@ -41,6 +42,9 @@ class Client(object):
         if self.tokenizer.unk_token is None:
             special_tokens["unk_token"] = DefaultToken.UNK_TOKEN.value
         self.tokenizer.add_special_tokens(special_tokens)
+
+    def set_subspace_bases(self, subspace_bases):
+        self.subspace_bases = subspace_bases
     
     def _extract_sst2_label(self, text):
         if text is None:
@@ -101,17 +105,25 @@ class Client(object):
         memory_record_dic=None,
         probabilities=None,
         gradient_history=None,
+        subspace_bases=None,
     ):
+        if subspace_bases is not None:
+            self.subspace_bases = subspace_bases
+        if getattr(self.args, "subspace", False) and self.subspace_bases is None:
+            raise ValueError("subspace is enabled but subspace_bases was not set.")
         if self.train_iterator is None:
             self.train_iterator = iter(self.train_loader)
 
         self.model.to(self.device)
 
-        # Move optimizer state to GPU
-        for name in self.optimizer_state:
-            for key, value in self.optimizer_state[name].items():
-                if isinstance(value, torch.Tensor):
-                    self.optimizer_state[name][key] = value.to(self.device)
+        if self.args.subspace:
+            self.optimizer_state = {}
+        else:
+            # Move optimizer state to GPU
+            for name in self.optimizer_state:
+                for key, value in self.optimizer_state[name].items():
+                    if isinstance(value, torch.Tensor):
+                        self.optimizer_state[name][key] = value.to(self.device)
 
         if memory_record_dic is not None:
             torch.cuda.empty_cache()
@@ -146,6 +158,7 @@ class Client(object):
                     args=self.args,
                     lr=lr,
                     state=self.optimizer_state,
+                    subspace_bases=self.subspace_bases,
                 )
             elif self.args.mezo_optimizer == "muon":
                 framework = MeZOMuonOptimizer(
@@ -153,6 +166,7 @@ class Client(object):
                     args=self.args,
                     lr=lr,
                     state=self.optimizer_state,
+                    subspace_bases=self.subspace_bases,
                 )
             elif self.args.mezo_optimizer == "demuon":
                 framework = DeMuonOptimizer(
@@ -167,6 +181,7 @@ class Client(object):
                     args=self.args,
                     lr=lr,
                     state=self.optimizer_state,
+                    subspace_bases=self.subspace_bases,
                 )
             elif self.args.mezo_optimizer == "gt_nsgdm":
                 framework = GTNSGDMOptimizer(
@@ -180,6 +195,7 @@ class Client(object):
                     self.model,
                     args=self.args,
                     lr=lr,
+                    subspace_bases=self.subspace_bases,
                 )
         if self.args.mezo_optimizer in ["demuon", "gt_nsgdm"]:
             self.model.train()
@@ -321,11 +337,14 @@ class Client(object):
                 if self.args.batch_or_epoch == "epoch" and "progress_bar" in locals():
                     progress_bar.close()
 
-        # Move optimizer state to CPU
-        for name in self.optimizer_state:
-            for key, value in self.optimizer_state[name].items():
-                if isinstance(value, torch.Tensor):
-                    self.optimizer_state[name][key] = value.cpu()
+        if self.args.subspace:
+            self.optimizer_state = {}
+        else:
+            # Move optimizer state to CPU
+            for name in self.optimizer_state:
+                for key, value in self.optimizer_state[name].items():
+                    if isinstance(value, torch.Tensor):
+                        self.optimizer_state[name][key] = value.cpu()
 
         if memory_record_dic is not None:
             memory_record_dic[self.device.index] = {}

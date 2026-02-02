@@ -58,7 +58,7 @@ def matrix_sign(update, ns_steps):
 
 
 class MeZODEMuonOptimizer(object):
-    def __init__(self, model, args, lr, state=None):  # Removed candidate_seeds
+    def __init__(self, model, args, lr, state=None, subspace_bases=None):  # Removed candidate_seeds
         print("FedKSeed-DeMuon")
         self.args = args
         self.lr = lr
@@ -80,6 +80,11 @@ class MeZODEMuonOptimizer(object):
 
         self.zo_eps = self.args.zo_eps
         self.rng = np.random.default_rng()
+        self.subspace_enabled = bool(getattr(args, "subspace", False))
+        self.subspace_bases = subspace_bases or {}
+        self._subspace_bases_device = {}
+        if self.subspace_enabled and not self.subspace_bases:
+            raise ValueError("subspace is enabled but subspace_bases was not provided.")
 
         if state is not None:
             self.state = state
@@ -108,6 +113,51 @@ class MeZODEMuonOptimizer(object):
                         param, dtype=torch.float32, memory_format=torch.preserve_format
                     ),
                 }
+
+    def _get_subspace_bases(self, name, param):
+        cached = self._subspace_bases_device.get(name)
+        if cached is not None:
+            return cached
+        bases = self.subspace_bases.get(name)
+        if not bases:
+            return None, None
+        U, V = bases
+        if U is None or V is None:
+            return None, None
+        if U.device != param.device or U.dtype != param.dtype:
+            U = U.to(device=param.device, dtype=param.dtype)
+        if V.device != param.device or V.dtype != param.dtype:
+            V = V.to(device=param.device, dtype=param.dtype)
+        self._subspace_bases_device[name] = (U, V)
+        return U, V
+
+    def _sample_z(self, name, param):
+        if not self.subspace_enabled:
+            return torch.normal(
+                mean=0,
+                std=1,
+                size=param.data.size(),
+                device=param.data.device,
+                dtype=param.data.dtype,
+            )
+        U, V = self._get_subspace_bases(name, param)
+        if U is None or V is None or U.ndim < 2 or V.ndim < 2:
+            return torch.normal(
+                mean=0,
+                std=1,
+                size=param.data.size(),
+                device=param.data.device,
+                dtype=param.data.dtype,
+            )
+        z0 = torch.normal(
+            mean=0,
+            std=1,
+            size=(U.shape[1], V.shape[0]),
+            device=param.data.device,
+            dtype=param.data.dtype,
+        )
+        z = (U @ z0 @ V) * math.sqrt(param.data.numel() / z0.numel())
+        return z.view(param.data.shape)
 
     def zo_step(self, batch):  # Removed local_seed_pool
         """
@@ -143,14 +193,8 @@ class MeZODEMuonOptimizer(object):
         """
         torch.manual_seed(self.zo_random_seed)
 
-        for _, param in self.named_parameters_to_optim:
-            z = torch.normal(
-                mean=0,
-                std=1,
-                size=param.data.size(),
-                device=param.data.device,
-                dtype=param.data.dtype,
-            )
+        for name, param in self.named_parameters_to_optim:
+            z = self._sample_z(name, param)
             param.data = param.data + scaling_factor * self.zo_eps * z
 
     def zo_forward(self, batch):
@@ -169,13 +213,7 @@ class MeZODEMuonOptimizer(object):
         torch.manual_seed(self.zo_random_seed)
 
         for name, param in self.named_parameters_to_optim:
-            z = torch.normal(
-                mean=0,
-                std=1,
-                size=param.data.size(),
-                device=param.data.device,
-                dtype=param.data.dtype,
-            )
+            z = self._sample_z(name, param)
             g = self.projected_grad * z
 
             if param.ndim >= 2:

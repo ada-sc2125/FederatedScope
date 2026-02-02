@@ -28,7 +28,7 @@ import math
 
 
 class MeZOAdamOptimizer(object):
-    def __init__(self, model, args, lr, state=None): # Removed candidate_seeds
+    def __init__(self, model, args, lr, state=None, subspace_bases=None): # Removed candidate_seeds
         print('FedKSeed-Adam')
         # determine which parameters to optimizes
         self.args = args
@@ -45,6 +45,11 @@ class MeZOAdamOptimizer(object):
         self.betas = (args.adam_beta1, args.adam_beta2) if hasattr(args, 'adam_beta1') and hasattr(args, 'adam_beta2') else (0.9, 0.999)
         self.eps = args.adam_eps if hasattr(args, 'adam_eps') else 1e-8
         self.rng = np.random.default_rng()
+        self.subspace_enabled = bool(getattr(args, "subspace", False))
+        self.subspace_bases = subspace_bases or {}
+        self._subspace_bases_device = {}
+        if self.subspace_enabled and not self.subspace_bases:
+            raise ValueError("subspace is enabled but subspace_bases was not provided.")
         
         if state is not None:
             self.state = state
@@ -58,6 +63,47 @@ class MeZOAdamOptimizer(object):
                     "exp_avg": torch.zeros_like(param, dtype=torch.float32, memory_format=torch.preserve_format),
                     "exp_avg_sq": torch.zeros_like(param, dtype=torch.float32, memory_format=torch.preserve_format)
                 }
+
+    def _get_subspace_bases(self, name, param):
+        cached = self._subspace_bases_device.get(name)
+        if cached is not None:
+            return cached
+        bases = self.subspace_bases.get(name)
+        if not bases:
+            return None, None
+        U, V = bases
+        if U is None or V is None:
+            return None, None
+        if U.device != param.device or U.dtype != param.dtype:
+            U = U.to(device=param.device, dtype=param.dtype)
+        if V.device != param.device or V.dtype != param.dtype:
+            V = V.to(device=param.device, dtype=param.dtype)
+        self._subspace_bases_device[name] = (U, V)
+        return U, V
+
+    def _sample_z(self, name, param):
+        if not self.subspace_enabled:
+            return torch.normal(mean=0,
+                                std=1,
+                                size=param.data.size(),
+                                device=param.data.device,
+                                dtype=param.data.dtype)
+        U, V = self._get_subspace_bases(name, param)
+        if U is None or V is None or U.ndim < 2 or V.ndim < 2:
+            return torch.normal(mean=0,
+                                std=1,
+                                size=param.data.size(),
+                                device=param.data.device,
+                                dtype=param.data.dtype)
+        z0 = torch.normal(
+            mean=0,
+            std=1,
+            size=(U.shape[1], V.shape[0]),
+            device=param.data.device,
+            dtype=param.data.dtype,
+        )
+        z = (U @ z0 @ V) * math.sqrt(param.data.numel() / z0.numel())
+        return z.view(param.data.shape)
         
     def zo_step(self, batch): # Removed local_seed_pool
         """
@@ -106,11 +152,7 @@ class MeZOAdamOptimizer(object):
 
         for name, param in self.named_parameters_to_optim:
             # print(f"Debug: {name} param.data.norm() before perturb: {param.data.norm().item()}")
-            z = torch.normal(mean=0,
-                             std=1,
-                             size=param.data.size(),
-                             device=param.data.device,
-                             dtype=param.data.dtype)
+            z = self._sample_z(name, param)
             param.data = param.data + scaling_factor * self.zo_eps * z
             # print(f"Debug: {name} param.data.norm() after perturb: {param.data.norm().item()}")
 
@@ -140,7 +182,7 @@ class MeZOAdamOptimizer(object):
             # print(f"Debug: {name} exp_avg_sq.norm() before update: {param_state['exp_avg_sq'].norm().item()}")
 
             # Resample the same perturbation vector z
-            z = torch.normal(mean=0, std=1, size=param.data.size(), device=param.data.device, dtype=param.data.dtype)
+            z = self._sample_z(name, param)
             
             # Gradient for this parameter is projected_grad * z
             g = effective_grad * z

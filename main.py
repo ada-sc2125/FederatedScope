@@ -65,6 +65,25 @@ def log_memory(tag, device):
         print(f"[mem] {tag} | rss_kb={rss_kb}")
 
 
+def build_subspace_bases(model, rank):
+    bases = {}
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim == 2:
+            rows, cols = param.shape
+            r = min(rank, rows, cols)
+            if r < 1:
+                bases[name] = (None, None)
+                continue
+            U, _ = torch.linalg.qr(torch.randn((rows, r), device="cpu", dtype=torch.float32))
+            V, _ = torch.linalg.qr(torch.randn((cols, r), device="cpu", dtype=torch.float32))
+            bases[name] = (U.to(param.dtype).contiguous(), V.to(param.dtype).T.contiguous())
+        else:
+            bases[name] = (torch.tensor([1.0]), torch.tensor([1.0]))
+    return bases
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -219,6 +238,18 @@ if __name__ == "__main__":
         type=float,
         default=1e-12,
         help="Normalization epsilon for GT-NSGDm",
+    )
+    parser.add_argument(
+        "--subspace",
+        default=False,
+        action="store_true",
+        help="if `true`, sample perturbations in per-layer subspaces instead of full parameter space",
+    )
+    parser.add_argument(
+        "--subspace_rank",
+        type=int,
+        default=8,
+        help="rank r for subspace perturbations (z is r x r)",
     )
 
     # Training args only for `FedKSeed-Pro`
@@ -420,6 +451,10 @@ if __name__ == "__main__":
         print("--- Kicking off client model updates and local training ---")
 
         trained_states = {}
+        if args.subspace:
+            subspace_bases = build_subspace_bases(client_list[0].model, args.subspace_rank)
+            for client in client_list:
+                client.set_subspace_bases(subspace_bases)
 
         for client in client_list:
             # Local Train (updates client.model in-place, returns CPU tensors)
@@ -475,9 +510,12 @@ if __name__ == "__main__":
             agg_model_state = aggregate_state_dicts_streaming(
                 neighbor_model_states, device=agg_device
             )
-            agg_opt_state = aggregate_optimizer_states_streaming(
-                neighbor_opt_states, device=agg_device
-            )
+            if args.subspace:
+                agg_opt_state = {}
+            else:
+                agg_opt_state = aggregate_optimizer_states_streaming(
+                    neighbor_opt_states, device=agg_device
+                )
             if args.agg_device == "cuda":
                 log_memory(f"post-aggregation client {client.idx}", device)
 
