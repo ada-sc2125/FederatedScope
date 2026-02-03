@@ -251,6 +251,14 @@ if __name__ == "__main__":
         default=8,
         help="rank r for subspace perturbations (z is r x r)",
     )
+    parser.add_argument(
+        "--subspace_update_local_steps",
+        type=int,
+        default=0,
+        help=(
+            "update subspace bases every F local steps; set <=0 to update every round"
+        ),
+    )
 
     # Training args only for `FedKSeed-Pro`
     parser.add_argument(
@@ -444,6 +452,17 @@ if __name__ == "__main__":
     if args.save:
         os.makedirs(log_dir, exist_ok=True)
 
+    def _local_steps_per_round():
+        if args.batch_or_epoch == "epoch":
+            try:
+                return args.local_step * len(client_list[0].train_loader)
+            except TypeError:
+                return args.local_step
+        return args.local_step
+
+    subspace_bases = None
+    subspace_step_counter = 0
+
     for r in range(1, args.rounds + 1):
         print(f"--- Round {r}/{args.rounds} ---")
 
@@ -452,7 +471,16 @@ if __name__ == "__main__":
 
         trained_states = {}
         if args.subspace:
-            subspace_bases = build_subspace_bases(client_list[0].model, args.subspace_rank)
+            update_every = getattr(args, "subspace_update_local_steps", 0) or 0
+            if (
+                subspace_bases is None
+                or update_every <= 0
+                or subspace_step_counter >= update_every
+            ):
+                subspace_bases = build_subspace_bases(
+                    client_list[0].model, args.subspace_rank
+                )
+                subspace_step_counter = 0
             for client in client_list:
                 client.set_subspace_bases(subspace_bases)
 
@@ -471,6 +499,8 @@ if __name__ == "__main__":
             torch.cuda.empty_cache()
 
         print("--- Client updates and local training finished ---")
+        if args.subspace:
+            subspace_step_counter += _local_steps_per_round()
 
         # --- 2. Aggregation & Evaluation Phase ---
         print("--- Kicking off aggregation and evaluation ---")
