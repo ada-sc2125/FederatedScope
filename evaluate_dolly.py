@@ -175,6 +175,8 @@ def evaluate_rouge(
     batch_size,
     max_length,
     max_new_tokens,
+    temperature,
+    top_p,
     device,
     eval_limit,
     eval_print_io,
@@ -223,7 +225,9 @@ def evaluate_rouge(
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 max_new_tokens=max_new_tokens,
-                num_beams=1,
+                do_sample=True,
+                temperature=temperature,
+                top_p=top_p,
             )
 
         prompt_len = input_ids.shape[1]
@@ -260,6 +264,8 @@ def main():
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--max_length", type=int, default=1024)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--eval_limit", type=int, default=0)
     parser.add_argument("--zerotask", type=int, default=7)
@@ -268,6 +274,8 @@ def main():
     parser.add_argument("--eval_print_io", action="store_true")
     parser.add_argument("--eval_print_n", type=int, default=2)
     args = parser.parse_args()
+    if args.max_new_tokens < 128:
+        args.max_new_tokens = 128
 
     device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
@@ -308,6 +316,8 @@ def main():
             args.batch_size,
             args.max_length,
             args.max_new_tokens,
+            args.temperature,
+            args.top_p,
             device,
             args.eval_limit,
             args.eval_print_io,
