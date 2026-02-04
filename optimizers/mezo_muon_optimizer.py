@@ -156,13 +156,14 @@ class MeZOMuonOptimizer(object):
             )
         U, V = self._get_subspace_bases(name, param)
         if U is None or V is None or U.ndim < 2 or V.ndim < 2:
-            return torch.normal(
+            z = torch.normal(
                 mean=0,
                 std=1,
                 size=param.data.size(),
                 device=param.data.device,
                 dtype=param.data.dtype,
             )
+        else:
         z0 = torch.normal(
             mean=0,
             std=1,
@@ -170,8 +171,11 @@ class MeZOMuonOptimizer(object):
             device=param.data.device,
             dtype=param.data.dtype,
         )
+        if getattr(self.args, "subspace_orthogonalize_z", False):
+            z0 = zeropower_via_newtonschulz5(z0, steps=self.ns_steps)
         z = (U @ z0 @ V) * math.sqrt(param.data.numel() / z0.numel())
-        return z.view(param.data.shape)
+        z = z.view(param.data.shape)
+        return z
 
     def zo_step(self, batch): # Removed local_seed_pool
         """

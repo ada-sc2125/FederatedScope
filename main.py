@@ -259,6 +259,12 @@ if __name__ == "__main__":
             "update subspace bases every F local steps; set <=0 to update every round"
         ),
     )
+    parser.add_argument(
+        "--subspace_orthogonalize_z",
+        default=False,
+        action="store_true",
+        help="if `true` and subspace is enabled, orthogonalize perturbation z",
+    )
 
     # Training args only for `FedKSeed-Pro`
     parser.add_argument(
